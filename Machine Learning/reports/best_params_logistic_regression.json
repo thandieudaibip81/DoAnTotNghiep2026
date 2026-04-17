@@ -1,0 +1,9 @@
+{
+  "model": "logistic_regression",
+  "best_f1": 0.9523686936927689,
+  "params": {
+    "C": 0.9808314477979637,
+    "l1_ratio": 0.16227285374345743,
+    "class_weight": null
+  }
+}

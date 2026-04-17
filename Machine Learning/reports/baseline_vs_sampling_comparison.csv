@@ -1,0 +1,4 @@
+Sampling,accuracy,precision,recall,f1_score,auc_roc,auc_pr
+Baseline (No Sampling),0.9755,0.0609,0.9184,0.1141,0.972,0.7189
+Random Under-sampling,0.9603,0.0384,0.9184,0.0738,0.9761,0.6933
+SMOTE,0.9747,0.0591,0.9184,0.111,0.9712,0.7235

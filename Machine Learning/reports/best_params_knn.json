@@ -1,0 +1,9 @@
+{
+  "model": "knn",
+  "best_f1": 0.9964369856024435,
+  "params": {
+    "n_neighbors": 3,
+    "weights": "distance",
+    "metric": "manhattan"
+  }
+}

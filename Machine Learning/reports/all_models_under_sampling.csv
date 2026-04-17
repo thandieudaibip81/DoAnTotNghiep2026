@@ -1,0 +1,5 @@
+Model,accuracy,precision,recall,f1_score,auc_roc,auc_pr
+Random Forest,0.964,0.0417,0.9082,0.0798,0.9778,0.6956
+Logistic Regression,0.9603,0.0384,0.9184,0.0738,0.9761,0.6933
+K-Nearest Neighbors,0.9726,0.0543,0.9082,0.1025,0.9646,0.2139
+Support Vector Machine,0.9797,0.0707,0.8878,0.1309,0.9786,0.6174

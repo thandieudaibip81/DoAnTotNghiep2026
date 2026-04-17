@@ -1,0 +1,36 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ===== Virtual Environment =====
+.venv/
+venv/
+env/
+
+# ===== Jupyter Notebook =====
+.ipynb_checkpoints/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== Data files (quá lớn cho GitHub) =====
+Machine Learning/data/creditcard.csv
+Machine Learning/reports/eda_cleaned_for_powerbi.csv
+
+# ===== Model files (quá lớn, tái tạo bằng pipeline) =====
+Machine Learning/models/*.pkl
+
+# ===== Gemini/AI assistant =====
+.gemini/
