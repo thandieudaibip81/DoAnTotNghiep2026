@@ -25,12 +25,5 @@ Thumbs.db
 *.swp
 *.swo
 
-# ===== Data files (quá lớn cho GitHub) =====
-Machine Learning/data/creditcard.csv
-Machine Learning/reports/eda_cleaned_for_powerbi.csv
-
-# ===== Model files (quá lớn, tái tạo bằng pipeline) =====
-Machine Learning/models/*.pkl
-
 # ===== Gemini/AI assistant =====
 .gemini/

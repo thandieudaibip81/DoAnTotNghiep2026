@@ -1,2 +1,3 @@
-model,sampling,accuracy,precision,recall,f1_score,auc_roc,auc_pr
-Logistic Regression,baseline (no sampling),0.9754,0.0606,0.9184,0.1138,0.9719,0.7093
+version https://git-lfs.github.com/spec/v1
+oid sha256:ffca95d31971c0dc683817e8df2972f7600f5b5fb598cc5925e1a4ab1b530a08
+size 150

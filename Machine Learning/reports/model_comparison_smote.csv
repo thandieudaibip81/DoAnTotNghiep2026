@@ -1,5 +1,3 @@
-model,sampling,accuracy,precision,recall,f1_score,auc_roc,auc_pr
-Random Forest,smote,0.9995,0.8469,0.8469,0.8469,0.9661,0.8732
-Logistic Regression,smote,0.9747,0.0591,0.9184,0.111,0.9713,0.7222
-K-Nearest Neighbors,smote,0.9985,0.5449,0.8673,0.6693,0.9434,0.6005
-Support Vector Machine,smote,0.9988,0.6739,0.6327,0.6526,0.8517,0.6294
+version https://git-lfs.github.com/spec/v1
+oid sha256:e8da13b943f22b08a0d89a1567a5dd1159d2738b4e44c8c3559785ea1314a11c
+size 333
