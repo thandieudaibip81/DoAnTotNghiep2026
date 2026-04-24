@@ -1,0 +1,12 @@
+# Fraud Detection Web App
+fastapi>=0.110
+uvicorn>=0.29
+scikit-learn>=1.4
+pandas>=2.1
+numpy>=1.26
+joblib>=1.3
+httpx>=0.27
+python-dotenv>=1.0
+google-generativeai>=0.5
+groq>=0.5
+imbalanced-learn>=0.12

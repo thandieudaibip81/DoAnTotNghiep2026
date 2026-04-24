@@ -25,5 +25,12 @@ Thumbs.db
 *.swp
 *.swo
 
+# ===== Environment / Secrets =====
+.env
+!.env.example
+
+# ===== SQLite =====
+*.db
+
 # ===== Gemini/AI assistant =====
 .gemini/
