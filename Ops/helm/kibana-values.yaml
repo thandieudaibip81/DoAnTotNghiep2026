@@ -1,0 +1,21 @@
+# ── Kibana ──
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "1Gi"
+
+# Kết nối Elasticsearch (HTTP)
+elasticsearchHosts: "http://elasticsearch-master:9200"
+
+# Service NodePort
+service:
+  type: NodePort
+  nodePort: 31601
+
+kibanaConfig:
+  kibana.yml: |
+    server.host: "0.0.0.0"
+    elasticsearch.hosts: ["http://elasticsearch-master:9200"]

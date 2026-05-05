@@ -1,0 +1,210 @@
+# ══════════════════════════════════════════════════════════
+# kube-prometheus-stack values
+# Bao gồm: Prometheus, Grafana, Node Exporter, AlertManager
+# ══════════════════════════════════════════════════════════
+
+# ── Prometheus ──
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: nfs-client
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+    # Scrape tất cả namespace
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+  service:
+    type: NodePort
+    nodePort: 30090
+
+# ── Grafana ──
+grafana:
+  adminUser: admin
+  adminPassword: admin123
+  service:
+    type: NodePort
+    nodePort: 31300
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  persistence:
+    enabled: true
+    storageClassName: nfs-client
+    size: 2Gi
+  # Dashboard mặc định cho K8s + PostgreSQL
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      # Node Exporter Full Dashboard
+      node-exporter:
+        gnetId: 1860
+        revision: 37
+        datasource: Prometheus
+      # PostgreSQL Dashboard
+      postgresql:
+        gnetId: 9628
+        revision: 7
+        datasource: Prometheus
+      # Kubernetes Cluster Overview
+      k8s-cluster:
+        gnetId: 6417
+        revision: 1
+        datasource: Prometheus
+
+# ── AlertManager → Telegram ──
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+  service:
+    type: NodePort
+    nodePort: 30903
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['alertname', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'telegram'
+      routes:
+        - receiver: 'telegram'
+          matchers:
+            - severity=~"warning|critical"
+    receivers:
+      - name: 'telegram'
+        telegram_configs:
+          - bot_token: '8688980592:AAGYTW2pV4A9iFPoMeMWl8WIznMF0fQSvwM'
+            chat_id: 1170692028
+            parse_mode: 'HTML'
+            message: |
+              {{ "{{" }} range .Alerts {{ "}}" }}
+              <b>🚨 {{ "{{" }} .Labels.alertname {{ "}}" }}</b>
+              <b>Severity:</b> {{ "{{" }} .Labels.severity {{ "}}" }}
+              <b>Namespace:</b> {{ "{{" }} .Labels.namespace {{ "}}" }}
+              <b>Description:</b> {{ "{{" }} .Annotations.description {{ "}}" }}
+              {{ "{{" }} end {{ "}}" }}
+
+# ── Node Exporter ──
+nodeExporter:
+  enabled: true
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "32Mi"
+    limits:
+      cpu: "100m"
+      memory: "64Mi"
+
+# ── kube-state-metrics ──
+kubeStateMetrics:
+  enabled: true
+
+# ── Tắt các component không cần ──
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+# ── Custom Alert Rules ──
+additionalPrometheusRulesMap:
+  fraud-guard-rules:
+    groups:
+      - name: fraud-guard.rules
+        rules:
+          # Pod crash alert
+          - alert: PodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total{namespace="fraud-detection"}[5m]) > 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pod {{ \"{{\" }} $labels.pod {{ \"}}\" }} đang crash loop"
+              description: "Pod {{ \"{{\" }} $labels.pod {{ \"}}\" }} trong namespace {{ \"{{\" }} $labels.namespace {{ \"}}\" }} đã restart nhiều lần trong 5 phút."
+
+          # Node RAM cao
+          - alert: NodeHighMemory
+            expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Node {{ \"{{\" }} $labels.instance {{ \"}}\" }} RAM > 85%"
+              description: "Node {{ \"{{\" }} $labels.instance {{ \"}}\" }} đang sử dụng {{ \"{{\" }} $value | printf \"%.1f\" {{ \"}}\" }}% RAM."
+
+          # Node CPU cao
+          - alert: NodeHighCPU
+            expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Node {{ \"{{\" }} $labels.instance {{ \"}}\" }} CPU > 85%"
+              description: "Node {{ \"{{\" }} $labels.instance {{ \"}}\" }} đang sử dụng {{ \"{{\" }} $value | printf \"%.1f\" {{ \"}}\" }}% CPU."
+
+          # PostgreSQL down
+          - alert: PostgreSQLDown
+            expr: pg_up == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "PostgreSQL server is down"
+              description: "PostgreSQL instance {{ \"{{\" }} $labels.instance {{ \"}}\" }} không phản hồi."
+
+          # PostgreSQL connections cao
+          - alert: PostgreSQLHighConnections
+            expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "PostgreSQL connections > 80%"
+              description: "PostgreSQL đang sử dụng {{ \"{{\" }} $value | printf \"%.1f\" {{ \"}}\" }}% số connections tối đa."
+
+          # Webapp pod không đủ replicas
+          - alert: WebappReplicasLow
+            expr: kube_deployment_status_replicas_available{deployment="fraud-guard-webapp", namespace="fraud-detection"} < 2
+            for: 3m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Fraud Guard webapp thiếu replicas"
+              description: "Chỉ có {{ \"{{\" }} $value {{ \"}}\" }}/2 replicas đang chạy."

@@ -1,0 +1,43 @@
+# ── Elasticsearch single-node (tối ưu cho cluster nhỏ) ──
+replicas: 1
+minimumMasterNodes: 1
+
+# Tài nguyên
+resources:
+  requests:
+    cpu: "200m"
+    memory: "1Gi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+# JVM Heap = 50% RAM limit
+esJavaOpts: "-Xmx1g -Xms1g"
+
+# Storage trên NFS
+volumeClaimTemplate:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: "nfs-client"
+  resources:
+    requests:
+      storage: 5Gi
+
+# Tắt security (internal cluster)
+esConfig:
+  elasticsearch.yml: |
+    xpack.security.enabled: false
+    xpack.security.http.ssl.enabled: false
+    xpack.security.transport.ssl.enabled: false
+
+# Single-node
+antiAffinity: "soft"
+clusterHealthCheckParams: "wait_for_status=yellow&timeout=5s"
+
+# Service NodePort
+service:
+  type: NodePort
+  nodePort: 31920
+
+# Ưu tiên deploy trên node2 (nhiều RAM nhất)
+nodeSelector:
+  kubernetes.io/hostname: node2

@@ -12,6 +12,8 @@ Dự án xây dựng hệ thống **phát hiện gian lận thẻ tín dụng** 
 2. **Ứng dụng Web (Webapp):** Giao diện Neo-Brutalism UI cho phép nhập giao dịch, chọn model, dự đoán gian lận
 3. **Phân tích AI:** Tích hợp 2 nhà cung cấp AI (Google Gemini + Groq) để phân tích chi tiết từng giao dịch
 4. **Cơ sở dữ liệu:** PostgreSQL lưu lịch sử giao dịch với hỗ trợ JSONB
+5. **CI/CD & Kubernetes:** Tự động hóa build/deploy với Jenkins, đóng gói Docker, chạy trên K8s cluster
+6. **Observability:** Centralized Logging với ELK Stack (Elasticsearch, Filebeat, Kibana) và Monitoring/Alerting với Prometheus, Grafana, gửi cảnh báo qua Telegram.
 
 **Bài toán cốt lõi:** Dataset gồm 284.807 giao dịch, trong đó chỉ **492 giao dịch gian lận (0,173%)**. Đây là bài toán **phân loại nhị phân với dữ liệu cực kỳ mất cân bằng** — nếu model luôn dự đoán "Legit" thì accuracy đã đạt 99,83%, nhưng bỏ sót toàn bộ fraud.
 
@@ -67,6 +69,17 @@ Machine Learning/
     ├── pr_*.png                       # Precision-Recall curves
     ├── feat_imp_*.png / .csv          # Feature importance (Random Forest)
     └── eda_*.png / .csv               # Biểu đồ & thống kê EDA
+
+Ops/                         # Thư mục DevOps & Infrastructure
+├── docker/                  # Dockerfile cho Jenkins agent
+├── helm/                    # Các Helm charts để deploy lên Kubernetes
+│   ├── fraud-guard/         # Helm chart của Webapp + PostgreSQL
+│   ├── elasticsearch-values.yaml
+│   ├── kibana-values.yaml
+│   ├── filebeat-values.yaml
+│   ├── prometheus-stack-values.yaml
+│   └── postgres-exporter-values.yaml
+└── k8s/                     # Cấu hình Kubernetes tĩnh (NFS, Jenkins)
 ```
 
 ---
@@ -218,6 +231,12 @@ scikit-learn, imbalanced-learn (SMOTE), Optuna, pandas, numpy, matplotlib, seabo
 ### Webapp
 FastAPI, Uvicorn, google-generativeai (Gemini), groq, psycopg2-binary, python-dotenv
 
+### DevOps & Observability
+- **Container & Orchestration:** Docker, Kubernetes, Helm
+- **CI/CD:** Jenkins (Pipeline)
+- **Logging:** Elasticsearch, Filebeat, Kibana (ELK Stack)
+- **Monitoring & Alerting:** Prometheus, Grafana, Node Exporter, Postgres Exporter, AlertManager (tích hợp Telegram bot)
+
 ### Kỹ thuật ML quan trọng
 - **`class_weight="balanced"`:** Phạt ~289x khi bỏ sót fraud
 - **`RobustScaler`:** Scale bằng median/IQR, robust với outlier
@@ -274,3 +293,35 @@ jupyter notebook "Machine Learning/notebooks/"
 | `PG_PORT` | PostgreSQL port | `5432` |
 
 > **Bảo mật:** `.env` chứa API keys → nằm trong `.gitignore`, KHÔNG push Git.
+
+---
+
+## 10. Hạ tầng DevOps & Khả năng quan sát (Observability)
+
+Dự án được thiết kế theo tiêu chuẩn Production với đầy đủ các thành phần hạ tầng chuyên nghiệp.
+
+### 10.1. Kubernetes & Helm
+- Toàn bộ ứng dụng (Webapp, PostgreSQL, Jenkins, Logging, Monitoring) được triển khai trên cụm **Kubernetes (K8s)**.
+- **NFS (Network File System):** Sử dụng `nfs-client-provisioner` để đảm bảo dữ liệu của Database, Elasticsearch, và Grafana không bị mất khi Pod khởi động lại.
+- **Helm:** Quản lý toàn bộ cấu hình triển khai qua các Helm charts (`Ops/helm/fraud-guard/`), hỗ trợ rollback dễ dàng.
+
+### 10.2. CI/CD Pipeline với Jenkins
+- File `Jenkinsfile` định nghĩa toàn bộ quy trình CI/CD.
+- Tự động hóa các bước: Checkout Source Code → Build Docker Image → Push lên DockerHub → Deploy lên K8s thông qua Helm.
+
+### 10.3. Centralized Logging (ELK Stack)
+- **Filebeat (DaemonSet):** Tự động thu thập log từ TẤT CẢ các containers (Webapp, DB) chạy trên mọi node.
+- **Elasticsearch:** Lưu trữ và index log tập trung.
+- **Kibana:** Giao diện trực quan để tìm kiếm, phân tích lỗi và theo dõi các giao dịch API theo thời gian thực.
+
+### 10.4. Monitoring & Alerting (Prometheus + Grafana)
+- **Metrics Collection:** Prometheus thu thập dữ liệu phần cứng qua `Node Exporter` và hiệu năng database qua `Postgres Exporter`.
+- **Dashboards (Grafana):**
+  - **Kubernetes Cluster:** Xem tài nguyên RAM/CPU tổng quan.
+  - **Node Exporter:** Theo dõi ổ cứng, RAM, Load Average của từng node.
+  - **PostgreSQL:** Theo dõi số kết nối, cache hit ratio của DB `fraud_guard`.
+- **AlertManager & Telegram Bot:** Cảnh báo tự động được gửi qua tin nhắn Telegram khi:
+  - Máy chủ quá tải (RAM, CPU > 85%, DiskPressure).
+  - Pod của ứng dụng bị crash liên tục (`CrashLoopBackOff`).
+  - Database PostgreSQL bị sập (`PostgreSQLDown`).
+  - Webapp có quá ít replicas đang chạy.

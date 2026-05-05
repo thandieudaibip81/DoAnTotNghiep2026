@@ -1,0 +1,32 @@
+# ── PostgreSQL Exporter ──
+# Kết nối tới PostgreSQL trong namespace fraud-detection
+
+config:
+  datasource:
+    host: "postgres-service.fraud-detection.svc.cluster.local"
+    port: "5432"
+    user: "postgres"
+    password: "postgres123"
+    database: "fraud_guard"
+    sslmode: "disable"
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "128Mi"
+
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  labels:
+    release: prometheus
+
+# Metrics quan trọng
+config:
+  autoDiscoverDatabases: true
+  excludeDatabases:
+    - template0
+    - template1

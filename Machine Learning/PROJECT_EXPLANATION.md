@@ -8,6 +8,8 @@ Dự án xây dựng hệ thống **phát hiện gian lận thẻ tín dụng** 
 2. **Ứng dụng Web (Webapp):** Giao diện Neo-Brutalism UI cho phép nhập giao dịch, chọn model, dự đoán gian lận
 3. **Phân tích AI:** Tích hợp 2 nhà cung cấp AI (Google Gemini + Groq) để phân tích chi tiết từng giao dịch
 4. **Cơ sở dữ liệu:** PostgreSQL lưu lịch sử giao dịch với hỗ trợ JSONB
+5. **CI/CD & Kubernetes:** Tự động hóa build/deploy với Jenkins, đóng gói Docker, chạy trên K8s cluster
+6. **Observability:** Centralized Logging với ELK Stack (Elasticsearch, Filebeat, Kibana) và Monitoring/Alerting với Prometheus, Grafana, gửi cảnh báo qua Telegram.
 
 **Bài toán cốt lõi:** Dataset gồm 284.807 giao dịch, trong đó chỉ **492 giao dịch gian lận (0,173%)**. Đây là bài toán **phân loại nhị phân với dữ liệu cực kỳ mất cân bằng** — nếu model luôn dự đoán "Legit" thì accuracy đã đạt 99,83%, nhưng bỏ sót toàn bộ fraud.
 
@@ -65,6 +67,17 @@ Machine Learning/
     ├── pr_*.png                       # Precision-Recall curves
     ├── feat_imp_*.png / .csv          # Feature importance (Random Forest)
     └── eda_*.png / .csv               # Biểu đồ & thống kê EDA
+
+Ops/                         # Thư mục DevOps & Infrastructure
+├── docker/                  # Dockerfile cho Jenkins agent
+├── helm/                    # Các Helm charts để deploy lên Kubernetes
+│   ├── fraud-guard/         # Helm chart của Webapp + PostgreSQL
+│   ├── elasticsearch-values.yaml
+│   ├── kibana-values.yaml
+│   ├── filebeat-values.yaml
+│   ├── prometheus-stack-values.yaml
+│   └── postgres-exporter-values.yaml
+└── k8s/                     # Cấu hình Kubernetes tĩnh (NFS, Jenkins)
 ```
 
 ---
@@ -554,7 +567,7 @@ Mỗi model hiển thị: Classification Report, Confusion Matrix, bảng metric
 | **seaborn**          | ≥ 0.13    | Vẽ biểu đồ thống kê đẹp hơn                                          |
 | **joblib**           | ≥ 1.3     | Serialize/deserialize model (`.pkl` files)                           |
 
-### 8.2. Webapp
+### 8.2. Webapp & Backend
 
 | Thư viện                  | Vai trò                                      |
 | ------------------------- | -------------------------------------------- |
@@ -564,6 +577,18 @@ Mỗi model hiển thị: Classification Report, Confusion Matrix, bảng metric
 | **groq**                  | SDK Groq (AI phân tích thay thế)             |
 | **psycopg2-binary**       | Kết nối PostgreSQL                           |
 | **python-dotenv**         | Đọc biến môi trường từ file `.env`           |
+
+### 8.3. DevOps & Observability
+
+| Công cụ / Stack           | Vai trò                                      |
+| ------------------------- | -------------------------------------------- |
+| **Docker**                | Đóng gói ứng dụng thành container            |
+| **Kubernetes (K8s)**      | Container Orchestration (quản lý phân phối)  |
+| **Helm**                  | Package manager cho Kubernetes               |
+| **Jenkins**               | CI/CD Pipeline (Tự động build & deploy)      |
+| **ELK Stack**             | Logging tập trung (Elasticsearch, Filebeat, Kibana) |
+| **Prometheus & Grafana**  | Monitoring & Dashboards                      |
+| **AlertManager**          | Gửi cảnh báo Telegram tự động                |
 
 ### 8.3. Tùy chọn
 
@@ -749,3 +774,42 @@ Mở lần lượt: `01_eda_and_powerbi.ipynb` → `02_baseline_vs_sampling.ipyn
 | `PG_PORT`         | Port PostgreSQL                | `5432`            |
 
 > **Bảo mật:** File `.env` chứa thông tin nhạy cảm → nằm trong `.gitignore`, KHÔNG push lên Git. File `.env.example` là mẫu tham khảo.
+
+---
+
+## 12. Hạ tầng DevOps & Khả năng quan sát (Observability)
+
+Dự án được thiết kế theo tiêu chuẩn Production với đầy đủ các thành phần hạ tầng chuyên nghiệp nhằm đảm bảo High Availability và dễ dàng theo dõi.
+
+### 12.1. Kubernetes & Helm
+- Toàn bộ ứng dụng (Webapp, PostgreSQL, Jenkins, Logging, Monitoring) được triển khai trên cụm **Kubernetes (K8s)** (cluster gồm 3 nodes).
+- **NFS (Network File System):** Sử dụng `nfs-client-provisioner` để đảm bảo dữ liệu của Database, Elasticsearch, và Grafana không bị mất khi Pod khởi động lại hay chuyển sang node khác.
+- **Helm:** Quản lý toàn bộ cấu hình triển khai qua các Helm charts (`Ops/helm/fraud-guard/`), hỗ trợ quản lý version và rollback.
+
+### 12.2. CI/CD Pipeline với Jenkins
+- File `Jenkinsfile` nằm ở root định nghĩa toàn bộ quy trình CI/CD.
+- Pipeline gồm các bước:
+  1. **Checkout:** Kéo code từ repository.
+  2. **Build Docker Image:** Build hình ảnh của backend dựa trên Dockerfile.
+  3. **Push to DockerHub:** Đẩy hình ảnh mới lên registry.
+  4. **Deploy to K8s:** Dùng Helm để upgrade Webapp và PostgreSQL với tag mới nhất.
+  5. Cập nhật trạng thái thành công/thất bại qua hệ thống log.
+
+### 12.3. Centralized Logging (ELK Stack)
+- **Filebeat (DaemonSet):** Chạy trên mỗi node, tự động thu thập log từ thư mục `/var/log/containers/*.log` của TẤT CẢ các containers (bao gồm Webapp, DB, kube-system).
+- **Elasticsearch:** (version 7.17.3) Lưu trữ và index log tập trung vào các daily index.
+- **Kibana:** Giao diện trực quan để tìm kiếm, phân tích lỗi, trace các request lỗi thay vì phải `kubectl logs` thủ công từng pod.
+
+### 12.4. Monitoring & Alerting (Prometheus + Grafana)
+- **Metrics Collection:** 
+  - `kube-prometheus-stack` thu thập dữ liệu phần cứng qua `Node Exporter`.
+  - `postgres-exporter` thu thập hiệu năng, số lượt query của database.
+- **Dashboards (Grafana):**
+  - **Kubernetes Cluster:** Xem tài nguyên RAM/CPU tổng quan.
+  - **Node Exporter:** Theo dõi ổ cứng, RAM, Load Average của từng máy chủ vật lý.
+  - **PostgreSQL:** Theo dõi số kết nối, cache hit ratio của DB `fraud_guard`.
+- **AlertManager & Telegram Bot:** Cảnh báo tự động được cấu hình gửi tin nhắn Telegram tới điện thoại khi:
+  - Máy chủ bị quá tải (RAM, CPU > 85%, DiskPressure).
+  - Pod của ứng dụng bị crash liên tục (`CrashLoopBackOff`).
+  - Database PostgreSQL bị mất kết nối (`PostgreSQLDown`).
+  - Webapp có quá ít replicas đang chạy (thiếu tính sẵn sàng).
