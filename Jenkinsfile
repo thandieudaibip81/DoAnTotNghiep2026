@@ -91,7 +91,7 @@ spec:
                             webapp=${DOCKER_IMAGE}:${DOCKER_TAG} \
                             -n ${KUBE_NS}
                         kubectl rollout status deployment/fraud-guard-webapp \
-                            -n ${KUBE_NS} --timeout=120s
+                            -n ${KUBE_NS} --timeout=300s
                     """
                 }
             }
