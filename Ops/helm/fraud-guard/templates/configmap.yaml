@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    app: fraud-detection
+data:
+  DB_TYPE: "postgresql"
+  DB_HOST: "postgres-service"
+  DB_PORT: "{{ .Values.postgres.service.port }}"
+  DB_NAME: "{{ .Values.postgres.database }}"
+  DB_USER: "{{ .Values.postgres.username }}"

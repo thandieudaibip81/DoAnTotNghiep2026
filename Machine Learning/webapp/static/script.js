@@ -74,6 +74,14 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ══════════════════════════════════════════════════
+// MOBILE SIDEBAR
+// ══════════════════════════════════════════════════
+
+function toggleSidebar() {
+    document.body.classList.toggle('mobile-sidebar-active');
+}
+
+// ══════════════════════════════════════════════════
 // MODEL SELECTOR — load from backend
 // ══════════════════════════════════════════════════
 
@@ -382,7 +390,10 @@ function renderHistory(history) {
             <div class="history-item ${item.id === currentSelectedId ? 'active' : ''}" data-id="${item.id}" onclick="selectHistoryItem(${item.id})">
                 <div class="item-header">
                     <span>#${item.id}</span>
-                    <span>${item.timestamp}</span>
+                    <span style="flex:1; text-align:right; margin-right:8px;">${item.timestamp}</span>
+                    <button class="delete-btn" onclick="deleteHistoryItem(event, ${item.id})" title="Xóa giao dịch">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
                 <div class="item-body">
                     <div>
@@ -405,12 +416,34 @@ function renderHistory(history) {
     }
 }
 
+async function deleteHistoryItem(event, id) {
+    event.stopPropagation(); // Ngăn sự kiện click lan ra lịch sử giao dịch
+    if (!confirm('Bạn có chắc chắn muốn xóa giao dịch này khỏi hệ thống?')) return;
+    
+    try {
+        const res = await fetch(`/history/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            window.allHistory = window.allHistory.filter(h => h.id !== id);
+            if (currentSelectedId === id) resetUI();
+            renderHistory(window.allHistory);
+        } else {
+            alert('Lỗi: Không thể xóa giao dịch này.');
+        }
+    } catch (e) {
+        console.error('Delete error:', e);
+        alert('Lỗi kết nối khi xóa giao dịch.');
+    }
+}
+
 async function selectHistoryItem(id) {
     if (currentSelectedId === id) { resetUI(); return; }
     currentSelectedId = id;
     document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
     const target = document.querySelector(`.history-item[data-id="${id}"]`);
     if (target) target.classList.add('active');
+
+    // Auto close sidebar on mobile after selection
+    document.body.classList.remove('mobile-sidebar-active');
 
     try {
         const res = await fetch(`/history/${id}`);

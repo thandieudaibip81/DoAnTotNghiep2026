@@ -1,0 +1,25 @@
+webapp:
+  image:
+    repository: thandieudaibip/fraud-detection-webapp
+    tag: latest
+    pullPolicy: Always
+  replicas: 2
+  service:
+    type: NodePort
+    port: 8000
+    nodePort: 30080
+
+postgres:
+  image:
+    repository: postgres
+    tag: 16-alpine
+  database: fraud_guard
+  username: postgres
+  password: postgres123
+  service:
+    type: NodePort
+    port: 5432
+    nodePort: 30543
+  persistence:
+    size: 2Gi
+    storageClass: nfs-client

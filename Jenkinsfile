@@ -99,10 +99,10 @@ spec:
 
     post {
         success {
-            echo "✅ Pipeline thành công! Image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+            echo " Pipeline thành công! Image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
         }
         failure {
-            echo "❌ Pipeline thất bại! Kiểm tra log để biết chi tiết."
+            echo " Pipeline thất bại! Kiểm tra log để biết chi tiết."
         }
     }
 }

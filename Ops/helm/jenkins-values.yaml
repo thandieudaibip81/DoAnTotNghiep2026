@@ -1,0 +1,31 @@
+controller:
+  serviceType: NodePort
+  nodePort: 32000
+  installPlugins:
+    - kubernetes
+    - workflow-aggregator
+    - git
+    - configuration-as-code
+    - docker-workflow
+  probes:
+    startupProbe:
+      failureThreshold: 60
+      periodSeconds: 10
+  # Using default admin secret generation
+  # Run as root inside container so it can chown /var/jenkins_home if NFS causes issues,
+  # or simply rely on the default init container that the Helm chart provides.
+  # The jenkins helm chart has a built-in init container to chown the volume.
+  
+persistence:
+  enabled: true
+  storageClass: nfs-client
+  accessMode: ReadWriteOnce
+  size: 5Gi
+
+rbac:
+  create: true
+  readSecrets: true
+
+serviceAccount:
+  create: true
+  name: jenkins-admin

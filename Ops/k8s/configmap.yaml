@@ -1,0 +1,12 @@
+# ConfigMap — non-sensitive configuration
+# These values are injected as environment variables into the webapp pods.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fraud-detection-config
+  namespace: fraud-detection
+data:
+  PG_DBNAME: "fraud_guard"
+  PG_USER: "postgres"
+  PG_HOST: "postgres-service"    # K8s Service DNS name
+  PG_PORT: "5432"

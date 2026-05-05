@@ -17,7 +17,7 @@ import sqlite3
 
 import psycopg2
 import psycopg2.extras
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -40,7 +40,8 @@ from pydantic import BaseModel
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
-MODELS_DIR = BASE_DIR.parent / "models"
+# Check inside BASE_DIR first (for Docker: /app/models), then parent (for local dev: Machine Learning/models)
+MODELS_DIR = BASE_DIR / "models" if (BASE_DIR / "models").exists() else BASE_DIR.parent / "models"
 DB_PATH = BASE_DIR / "fraud_history.db"
 SCALE_COLS = ["Amount", "Time"]  # Must match src/config.py
 
@@ -490,7 +491,17 @@ def get_history():
         result = []
         for r in rows:
             ts = r[1]  # timestamp
+            if isinstance(ts, str):
+                try:
+                    ts = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    try:
+                        ts = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
+                    except ValueError:
+                        pass
             if hasattr(ts, 'strftime'):
+                # Convert UTC to Vietnam Time (UTC+7)
+                ts = ts + timedelta(hours=7)
                 ts = ts.strftime("%Y-%m-%d %H:%M:%S")
             result.append({
                 "id": r[0],
@@ -575,6 +586,27 @@ async def analyze(req: AnalysisRequest):
 
     response = await call_ai(prompt, SYSTEM_PROMPT_ANALYZE, req.provider)
     return {"analysis": response}
+
+
+@app.delete("/history/{item_id}")
+def delete_history_item(item_id: int):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        p = _ph()
+        cur.execute(f"DELETE FROM fraud_history WHERE id = {p}", (item_id,))
+        deleted = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        if deleted == 0:
+            raise HTTPException(status_code=404, detail="Not found")
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Delete error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ──────────────────────────────────────────────────
