@@ -17,7 +17,7 @@ spec:
         - name: docker-storage
           mountPath: /var/lib/docker
     - name: kubectl
-      image: bitnami/kubectl:latest
+      image: alpine/k8s:1.32.4
       command: ['sleep']
       args: ['infinity']
   volumes:
