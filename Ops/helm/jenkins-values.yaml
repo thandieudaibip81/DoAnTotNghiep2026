@@ -11,6 +11,7 @@ controller:
     startupProbe:
       failureThreshold: 60
       periodSeconds: 10
+  javaOpts: "-Dsun.net.client.defaultConnectTimeout=15000 -Dsun.net.client.defaultReadTimeout=15000 -Dhudson.model.DownloadService.noSignatureCheck=true"
   # Using default admin secret generation
   # Run as root inside container so it can chown /var/jenkins_home if NFS causes issues,
   # or simply rely on the default init container that the Helm chart provides.

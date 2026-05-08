@@ -1,0 +1,34 @@
+# ══════════════════════════════════════════════════════════
+# NFS Subdir External Provisioner — Helm Values
+# ══════════════════════════════════════════════════════════
+# Kết nối cụm K8s với NFS Server riêng biệt (VM 200 trên Proxmox)
+# để cấp phát Persistent Volume tự động cho tất cả dịch vụ.
+#
+# Cài đặt:
+#   helm repo add nfs-subdir-external-provisioner \
+#     https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+#
+#   helm install nfs-client nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+#     -f nfs-provisioner-values.yaml
+# ─────────────────────────────────────────────────────────
+
+# ── NFS Server ──
+nfs:
+  server: 192.168.1.60          # IP (nfs-server) 
+  path: /mnt/nfs_data            # Thư mục export (xem /etc/exports trên NFS server)
+
+# ── StorageClass ──
+storageClass:
+  name: nfs-client               # Tên StorageClass dùng trong các PVC
+  defaultClass: true              # Đặt làm StorageClass mặc định cho cluster
+  reclaimPolicy: Retain           # Giữ lại dữ liệu khi PVC bị xóa 
+  archiveOnDelete: true           
+
+# ── Resources ──
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "100m"
+    memory: "128Mi"

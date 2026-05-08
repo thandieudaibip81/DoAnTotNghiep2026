@@ -111,8 +111,7 @@ def step_baseline() -> None:
     results_df = pd.DataFrame(all_results)
     export_metrics_csv(results_df, "baseline")
 
-    print("
-⚠️  Baseline shows high Accuracy but LOW Recall — proving the need for resampling!")
+    print("\n⚠️  Baseline shows high Accuracy but LOW Recall — proving the need for resampling!")
     print(results_df.to_string(index=False))
 
 

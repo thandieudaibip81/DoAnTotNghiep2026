@@ -43,9 +43,9 @@ Machine Learning/
 │       └── script.js        # JavaScript logic (form, API calls, AI)
 │
 ├── notebooks/               # Jupyter Notebooks — phân tích & trình bày kết quả
-│   ├── 01_eda_and_powerbi.ipynb       # Khám phá dữ liệu
-│   ├── 02_baseline_vs_sampling.ipynb  # So sánh Baseline vs Under-sampling vs SMOTE
-│   └── 03_tuning_results.ipynb        # Kết quả tuning siêu tham số
+│   ├── 01_eda.ipynb       # Khám phá dữ liệu
+│   ├── 02_model_training.ipynb  # So sánh Baseline vs Under-sampling vs SMOTE
+│   └── 03_hyperparameter_tuning.ipynb        # Kết quả tuning siêu tham số
 │
 ├── data/                    # Dữ liệu đầu vào
 │   └── creditcard.csv       # Dataset gốc (284.807 giao dịch)
@@ -61,8 +61,7 @@ Machine Learning/
 └── reports/                 # Output: biểu đồ, CSV, JSON
     ├── best_params_*.json             # Siêu tham số tốt nhất từ Optuna
     ├── all_models_baseline.csv        # Bảng so sánh 4 model (baseline)
-    ├── all_models_under_sampling.csv  # Bảng so sánh 4 model (under-sampling)
-    ├── all_models_smote.csv           # Bảng so sánh 4 model (SMOTE)
+        ├── all_models_smote.csv           # Bảng so sánh 4 model (SMOTE)
     ├── cm_*.png                       # Confusion matrix từng model
     ├── pr_*.png                       # Precision-Recall curves
     ├── feat_imp_*.png / .csv          # Feature importance (Random Forest)
@@ -488,7 +487,7 @@ python run_pipeline.py --step tune --models rf,lr --sampling smote
 
 ## 6. Notebooks
 
-### 6.1. `01_eda_and_powerbi.ipynb` — Khám phá dữ liệu (EDA)
+### 6.1. `01_eda.ipynb` — Khám phá dữ liệu (EDA)
 
 - Thống kê mô tả (mean, std, min, max cho mỗi feature)
 - Phân bố class (`Class = 0` vs `Class = 1`) → chứng minh imbalanced
@@ -496,7 +495,7 @@ python run_pipeline.py --step tune --models rf,lr --sampling smote
 - Ma trận tương quan (Correlation Heatmap)
 - Xuất CSV đã clean cho Power BI
 
-### 6.2. `02_baseline_vs_sampling.ipynb` — So sánh Baseline vs Sampling
+### 6.2. `02_model_training.ipynb` — So sánh Baseline vs Sampling
 
 Notebook chính, so sánh **4 model × 3 chiến lược sampling** = 12 thí nghiệm:
 
@@ -510,7 +509,7 @@ Notebook chính, so sánh **4 model × 3 chiến lược sampling** = 12 thí ng
 
 Mỗi model hiển thị: Classification Report, Confusion Matrix, bảng metrics.
 
-### 6.3. `03_tuning_results.ipynb` — Kết quả Tuning
+### 6.3. `03_hyperparameter_tuning.ipynb` — Kết quả Tuning
 
 - Load `best_params_*.json` cho mỗi model
 - Biểu đồ so sánh: Recall, F1, AUC-ROC, AUC-PR
@@ -757,7 +756,7 @@ SELECT * FROM fraud_history;
 jupyter notebook notebooks/
 ```
 
-Mở lần lượt: `01_eda_and_powerbi.ipynb` → `02_baseline_vs_sampling.ipynb` → `03_tuning_results.ipynb`
+Mở lần lượt: `01_eda.ipynb` → `02_model_training.ipynb` → `03_hyperparameter_tuning.ipynb`
 
 ---
 

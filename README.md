@@ -47,9 +47,9 @@ Machine Learning/
 │       └── script.js        # JavaScript logic (form, API calls, AI)
 │
 ├── notebooks/               # Jupyter Notebooks — phân tích & trình bày kết quả
-│   ├── 01_eda_and_powerbi.ipynb       # Khám phá dữ liệu
-│   ├── 02_baseline_vs_sampling.ipynb  # So sánh Baseline vs Under-sampling vs SMOTE
-│   └── 03_tuning_results.ipynb        # Kết quả tuning siêu tham số
+│   ├── 01_eda.ipynb       # Khám phá dữ liệu
+│   ├── 02_model_training.ipynb  # So sánh Baseline vs Under-sampling vs SMOTE
+│   └── 03_hyperparameter_tuning.ipynb        # Kết quả tuning siêu tham số
 │
 ├── data/                    # Dữ liệu đầu vào
 │   └── creditcard.csv       # Dataset gốc (284.807 giao dịch)
@@ -79,7 +79,7 @@ Ops/                         # Thư mục DevOps & Infrastructure
 │   ├── filebeat-values.yaml
 │   ├── prometheus-stack-values.yaml
 │   └── postgres-exporter-values.yaml
-└── k8s/                     # Cấu hình Kubernetes tĩnh (NFS, Jenkins)
+└── k8s/                     # Cấu hình Kubernetes tĩnh (manual apply)
 ```
 
 ---
