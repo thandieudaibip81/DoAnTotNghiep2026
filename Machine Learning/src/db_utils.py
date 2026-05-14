@@ -1,14 +1,4 @@
-"""
-db_utils.py — PostgreSQL integration for Power BI dashboards.
 
-Provides:
-    • Table creation DDL (model_metrics, feature_importance, predictions_log)
-    • Insert helpers for metrics and feature importance
-    • Connection factory using environment variables
-
-This module is OPTIONAL — the pipeline works without a database.
-Power BI can also connect directly to the CSV exports in ``reports/``.
-"""
 
 from __future__ import annotations
 

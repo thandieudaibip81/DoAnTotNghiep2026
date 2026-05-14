@@ -8,12 +8,10 @@
 
 Dự án xây dựng hệ thống **phát hiện gian lận thẻ tín dụng** (Credit Card Fraud Detection) hoàn chỉnh, bao gồm:
 
-1. **Pipeline Machine Learning:** 4 mô hình ML, so sánh 3 chiến lược xử lý dữ liệu mất cân bằng, tối ưu siêu tham số bằng Optuna
-2. **Ứng dụng Web (Webapp):** Giao diện Neo-Brutalism UI cho phép nhập giao dịch, chọn model, dự đoán gian lận
-3. **Phân tích AI:** Tích hợp 2 nhà cung cấp AI (Google Gemini + Groq) để phân tích chi tiết từng giao dịch
-4. **Cơ sở dữ liệu:** PostgreSQL lưu lịch sử giao dịch với hỗ trợ JSONB
-5. **CI/CD & Kubernetes:** Tự động hóa build/deploy với Jenkins, đóng gói Docker, chạy trên K8s cluster
-6. **Observability:** Centralized Logging với ELK Stack (Elasticsearch, Filebeat, Kibana) và Monitoring/Alerting với Prometheus, Grafana, gửi cảnh báo qua Telegram.
+1. **Pipeline Machine Learning:** 4 mô hình ML, so sánh 3 chiến lược xử lý dữ liệu mất cân bằng, tối ưu siêu tham số bằng Optuna.
+2. **Ứng dụng Web (Webapp):** Giao diện Neo-Brutalism UI cho phép dự đoán gian lận và tích hợp AI phân tích.
+3. **Cơ sở dữ liệu:** PostgreSQL lưu trữ lịch sử giao dịch với tính năng JSONB mạnh mẽ.
+4. **Hạ tầng DevOps:** CI/CD với Jenkins, Kubernetes Cluster, ELK Stack (Logging) và Prometheus/Grafana (Monitoring).
 
 **Bài toán cốt lõi:** Dataset gồm 284.807 giao dịch, trong đó chỉ **492 giao dịch gian lận (0,173%)**. Đây là bài toán **phân loại nhị phân với dữ liệu cực kỳ mất cân bằng** — nếu model luôn dự đoán "Legit" thì accuracy đã đạt 99,83%, nhưng bỏ sót toàn bộ fraud.
 
@@ -28,14 +26,13 @@ Machine Learning/
 ├── PROJECT_EXPLANATION.md   # Tài liệu giải thích dự án chi tiết
 │
 ├── src/                     # Source code chính (package Python)
-│   ├── __init__.py          # Đánh dấu thư mục là Python package
 │   ├── config.py            # Cấu hình toàn cục (đường dẫn, hằng số, siêu tham số)
 │   ├── preprocessing.py     # Load dữ liệu, scaling, train/test split, sampling
-│   ├── models.py            # Model factory — tạo 4 classifier với tham số mặc định
-│   ├── trainer.py           # Huấn luyện model, lưu/tải file .pkl
-│   ├── tuner.py             # Tối ưu siêu tham số bằng Optuna
+│   ├── models.py            # Model factory — tạo các classifier
+│   ├── trainer.py           # Huấn luyện model, lưu file .pkl, tích hợp MLflow
+│   ├── tuner.py             # Tối ưu siêu tham số bằng Optuna & Log MLflow
 │   ├── evaluator.py         # Đánh giá model, vẽ biểu đồ, xuất CSV
-│   └── db_utils.py          # Tích hợp PostgreSQL cho Power BI (tùy chọn)
+│   └── db_utils.py          # Tích hợp PostgreSQL
 │
 ├── webapp/                  # Ứng dụng web — giao diện dự đoán gian lận
 │   ├── app.py               # FastAPI backend — API dự đoán, AI phân tích, DB
@@ -62,13 +59,11 @@ Machine Learning/
 │   ├── svm_smote.pkl                  # ★ Production model — SVM + SMOTE + Tuned
 │   └── logistic_regression_baseline.pkl  # Model báo cáo (so sánh)
 │
-└── reports/                 # Output: biểu đồ, CSV, JSON
+└── reports/                 # Output: biểu đồ, CSV, JSON, HTML
     ├── best_params_*.json             # Siêu tham số tốt nhất từ Optuna
-    ├── all_models_*.csv               # Bảng so sánh 4 model
-    ├── cm_*.png                       # Confusion matrix từng model
-    ├── pr_*.png                       # Precision-Recall curves
-    ├── feat_imp_*.png / .csv          # Feature importance (Random Forest)
-    └── eda_*.png / .csv               # Biểu đồ & thống kê EDA
+    ├── model_comparison_smote.csv     # Bảng so sánh kết quả cuối cùng
+    ├── cm_*.png / pr_*.png            # Confusion Matrix & Precision-Recall curves
+    └── eda_*.png                      # Biểu đồ phân tích dữ liệu
 
 Ops/                         # Thư mục DevOps & Infrastructure
 ├── docker/                  # Dockerfile cho Jenkins agent
@@ -128,10 +123,10 @@ Output: confusion matrix, PR curves, feature importance, CSV so sánh.
 
 | Model | Best F1 (CV) | Best Params |
 | ----- | ------------ | ----------- |
-| **Random Forest** | **0.9999** | `n_estimators=200, max_depth=30` |
-| **Logistic Reg.** | 0.9524 | `C=0.98, l1_ratio=0.16` |
-| **KNN** | 0.9964 | `K=3, distance, manhattan` |
-| **SVM** | 0.9988 | `RBF, C=28.48, balanced` |
+| **Random Forest** | **0.9999** | `n_estimators=200, max_depth=30, min_samples_split=5` |
+| **Logistic Reg.** | 0.9524 | `C=0.98, solver='saga', penalty='elasticnet'` |
+| **KNN** | 0.9964 | `K=3, weights='distance', metric='manhattan'` |
+| **SVM** | 0.9988 | `kernel='rbf', C=28.48, class_weight='balanced'` |
 
 ### 3.6. `trainer.py` — Huấn luyện
 
@@ -256,6 +251,7 @@ pip install -r requirements.txt
 
 ### ML Pipeline
 ```bash
+# Chạy toàn bộ: baseline → tune → train (SMOTE)
 python run_pipeline.py --step all --sampling smote
 ```
 
@@ -299,29 +295,3 @@ jupyter notebook "Machine Learning/notebooks/"
 ## 10. Hạ tầng DevOps & Khả năng quan sát (Observability)
 
 Dự án được thiết kế theo tiêu chuẩn Production với đầy đủ các thành phần hạ tầng chuyên nghiệp.
-
-### 10.1. Kubernetes & Helm
-- Toàn bộ ứng dụng (Webapp, PostgreSQL, Jenkins, Logging, Monitoring) được triển khai trên cụm **Kubernetes (K8s)**.
-- **NFS (Network File System):** Sử dụng `nfs-client-provisioner` để đảm bảo dữ liệu của Database, Elasticsearch, và Grafana không bị mất khi Pod khởi động lại.
-- **Helm:** Quản lý toàn bộ cấu hình triển khai qua các Helm charts (`Ops/helm/fraud-guard/`), hỗ trợ rollback dễ dàng.
-
-### 10.2. CI/CD Pipeline với Jenkins
-- File `Jenkinsfile` định nghĩa toàn bộ quy trình CI/CD.
-- Tự động hóa các bước: Checkout Source Code → Build Docker Image → Push lên DockerHub → Deploy lên K8s thông qua Helm.
-
-### 10.3. Centralized Logging (ELK Stack)
-- **Filebeat (DaemonSet):** Tự động thu thập log từ TẤT CẢ các containers (Webapp, DB) chạy trên mọi node.
-- **Elasticsearch:** Lưu trữ và index log tập trung.
-- **Kibana:** Giao diện trực quan để tìm kiếm, phân tích lỗi và theo dõi các giao dịch API theo thời gian thực.
-
-### 10.4. Monitoring & Alerting (Prometheus + Grafana)
-- **Metrics Collection:** Prometheus thu thập dữ liệu phần cứng qua `Node Exporter` và hiệu năng database qua `Postgres Exporter`.
-- **Dashboards (Grafana):**
-  - **Kubernetes Cluster:** Xem tài nguyên RAM/CPU tổng quan.
-  - **Node Exporter:** Theo dõi ổ cứng, RAM, Load Average của từng node.
-  - **PostgreSQL:** Theo dõi số kết nối, cache hit ratio của DB `fraud_guard`.
-- **AlertManager & Telegram Bot:** Cảnh báo tự động được gửi qua tin nhắn Telegram khi:
-  - Máy chủ quá tải (RAM, CPU > 85%, DiskPressure).
-  - Pod của ứng dụng bị crash liên tục (`CrashLoopBackOff`).
-  - Database PostgreSQL bị sập (`PostgreSQLDown`).
-  - Webapp có quá ít replicas đang chạy.

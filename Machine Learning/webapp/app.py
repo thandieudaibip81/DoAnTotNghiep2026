@@ -5,6 +5,7 @@ Features:
     • Multi-model prediction (RF, LR, KNN, SVM across sampling strategies)
     • Dual AI chatbot (Gemini + Groq) with provider switching
     • Transaction history with PostgreSQL (SQLite fallback)
+    • Excel batch import with format validation
     • Neo-Brutalism UI served from static/
 """
 
@@ -14,6 +15,9 @@ import json
 import logging
 import os
 import sqlite3
+import uuid
+import tempfile
+import io
 
 import psycopg2
 import psycopg2.extras
@@ -27,11 +31,12 @@ import joblib
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from groq import Groq
 from pydantic import BaseModel
+import openpyxl
 
 # ──────────────────────────────────────────────────
 # Configuration
@@ -195,9 +200,21 @@ def init_db():
                 v_features JSONB,
                 prediction INTEGER,
                 probability FLOAT,
-                verdict TEXT
+                verdict TEXT,
+                batch_id TEXT,
+                customer_name TEXT,
+                bank_name TEXT,
+                tx_description TEXT
             )
         """)
+        # Add columns if they don't exist (migration for existing DBs)
+        for col, ctype in [("batch_id", "TEXT"), ("customer_name", "TEXT"), ("bank_name", "TEXT"), ("tx_description", "TEXT")]:
+            try:
+                cur.execute(f"ALTER TABLE fraud_history ADD COLUMN {col} {ctype}")
+            except Exception:
+                conn.rollback()
+                conn = get_db()
+                cur = conn.cursor()
     else:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS fraud_history (
@@ -209,7 +226,11 @@ def init_db():
                 v_features TEXT,
                 prediction INTEGER,
                 probability FLOAT,
-                verdict TEXT
+                verdict TEXT,
+                batch_id TEXT,
+                customer_name TEXT,
+                bank_name TEXT,
+                tx_description TEXT
             )
         """)
 
@@ -303,17 +324,17 @@ def get_history_context() -> str:
         cur = conn.cursor()
         cur.execute(
             "SELECT amount, verdict, probability, timestamp, model_used "
-            "FROM fraud_history ORDER BY timestamp DESC LIMIT 20"
+            "FROM fraud_history WHERE batch_id IS NULL ORDER BY timestamp DESC LIMIT 20"
         )
         rows = cur.fetchall()
 
         cur.execute(
-            "SELECT AVG(amount), COUNT(*) FROM fraud_history WHERE verdict = 'An toàn'"
+            "SELECT AVG(amount), COUNT(*) FROM fraud_history WHERE verdict = 'An toàn' AND batch_id IS NULL"
         )
         safe_stats = cur.fetchone()
 
         cur.execute(
-            "SELECT COUNT(*) FROM fraud_history WHERE verdict = 'Gian lận'"
+            "SELECT COUNT(*) FROM fraud_history WHERE verdict = 'Gian lận' AND batch_id IS NULL"
         )
         fraud_count = cur.fetchone()[0]
 
@@ -367,6 +388,17 @@ class AnalysisRequest(BaseModel):
     prediction: int
     probability: float
     model_used: str = ""
+    provider: str = "gemini"
+
+
+class BatchAnalysisRequest(BaseModel):
+    batch_id: str
+    provider: str = "gemini"
+
+
+class BatchChatMessage(BaseModel):
+    batch_id: str
+    message: str
     provider: str = "gemini"
 
 
@@ -433,13 +465,16 @@ def predict(req: PredictRequest):
         else:
             fraud_prob = 1.0 if prediction == 1 else 0.0
 
-        # Determine verdict
+        # Determine verdict + confidence
         if fraud_prob >= 0.75:
             verdict = "Gian lận"
+            confidence = fraud_prob  # % gian lận
         elif fraud_prob >= 0.35:
             verdict = "Nghi ngờ"
+            confidence = fraud_prob  # % nghi ngờ gian lận
         else:
             verdict = "An toàn"
+            confidence = 1.0 - fraud_prob  # % an toàn
 
         # Save to DB
         try:
@@ -453,7 +488,7 @@ def predict(req: PredictRequest):
                    (model_used, time_val, amount, v_features, prediction, probability, verdict)
                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})""",
                 (MODEL_REGISTRY[model_id]["display_name"], tx.Time, tx.Amount,
-                 v_json, prediction, fraud_prob, verdict),
+                 v_json, prediction, confidence, verdict),
             )
             conn.commit()
             cur.close()
@@ -463,7 +498,7 @@ def predict(req: PredictRequest):
 
         return {
             "fraud_prediction": prediction,
-            "probability": round(fraud_prob, 4),
+            "probability": round(confidence, 4),
             "verdict": verdict,
             "model_used": MODEL_REGISTRY[model_id]["display_name"],
         }
@@ -482,7 +517,7 @@ def get_history():
         cur = conn.cursor()
         cur.execute(
             "SELECT id, timestamp, amount, verdict, probability, model_used "
-            "FROM fraud_history ORDER BY timestamp DESC LIMIT 50"
+            "FROM fraud_history WHERE batch_id IS NULL ORDER BY timestamp DESC LIMIT 50"
         )
         rows = cur.fetchall()
         cur.close()
@@ -588,6 +623,75 @@ async def analyze(req: AnalysisRequest):
     return {"analysis": response}
 
 
+@app.post("/analyze-batch/")
+async def analyze_batch(req: BatchAnalysisRequest):
+    conn = get_db()
+    cur = conn.cursor()
+    p = _ph()
+    
+    cur.execute(f"SELECT customer_name, bank_name, model_used FROM fraud_history WHERE batch_id = {p} LIMIT 1", (req.batch_id,))
+    meta = cur.fetchone()
+    if not meta:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    cur.execute(f"SELECT COUNT(*), SUM(CASE WHEN verdict='Gian lận' THEN 1 ELSE 0 END), SUM(CASE WHEN verdict='Nghi ngờ' THEN 1 ELSE 0 END) FROM fraud_history WHERE batch_id = {p}", (req.batch_id,))
+    stats = cur.fetchone()
+    
+    cur.execute(f"SELECT time_val, amount, probability, verdict, tx_description FROM fraud_history WHERE batch_id = {p} AND verdict != 'An toàn' ORDER BY time_val ASC", (req.batch_id,))
+    risky_rows = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+
+    total = stats[0]
+    fraud = stats[1] or 0
+    suspect = stats[2] or 0
+    risky_txs = [{"time_sec": r[0], "amount_vnd": r[1], "verdict": r[3], "confidence": f"{r[2]*100:.1f}%", "description": r[4]} for r in risky_rows]
+
+    prompt = f"""BÁO CÁO PHÂN TÍCH FORENSIC LÔ GIAO DỊCH KHÁCH HÀNG
+    ─────────────────────────────────
+    KHÁCH HÀNG: {meta[0]} - NGÂN HÀNG: {meta[1]}
+    MÔ HÌNH DỰ ĐOÁN: {meta[2]}
+    TỔNG SỐ GIAO DỊCH: {total} | GIAN LẬN: {fraud} | NGHI NGỜ: {suspect}
+    
+    DANH SÁCH GIAO DỊCH RỦI RO CAO (Nghi ngờ / Gian lận):
+    {json.dumps(risky_txs, ensure_ascii=False, indent=2)}
+
+    YÊU CẦU: Hãy viết một đánh giá RẤT NGẮN GỌN (tối đa 3-4 câu) giải thích vì sao tài khoản này có rủi ro (dựa trên thời gian/số tiền/hành vi bất thường) và 1 câu kết luận/đề xuất hành động. Trình bày trơn tru dạng đoạn văn, KHÔNG chia đề mục hay gạch đầu dòng dài dòng.
+    """
+
+    response = await call_ai(prompt, SYSTEM_PROMPT_ANALYZE, req.provider)
+    return {"analysis": response}
+
+
+@app.post("/chat-batch/")
+async def chat_batch(req: BatchChatMessage):
+    conn = get_db()
+    cur = conn.cursor()
+    p = _ph()
+    cur.execute(f"SELECT customer_name, bank_name, model_used FROM fraud_history WHERE batch_id = {p} LIMIT 1", (req.batch_id,))
+    meta = cur.fetchone()
+    
+    if meta:
+        cur.execute(f"SELECT COUNT(*), SUM(CASE WHEN verdict='Gian lận' THEN 1 ELSE 0 END), SUM(CASE WHEN verdict='Nghi ngờ' THEN 1 ELSE 0 END) FROM fraud_history WHERE batch_id = {p}", (req.batch_id,))
+        stats = cur.fetchone()
+        
+        cur.execute(f"SELECT time_val, amount, verdict, tx_description FROM fraud_history WHERE batch_id = {p} ORDER BY time_val ASC", (req.batch_id,))
+        all_txs = [{"time": r[0], "amount": r[1], "verdict": r[2], "desc": r[3]} for r in cur.fetchall()]
+        
+        context_str = f"\nNgữ cảnh: Đang trao đổi về Lô Giao Dịch của khách hàng: {meta[0]} ({meta[1]}). Tổng GD: {stats[0]}, Gian lận: {stats[1] or 0}, Nghi ngờ: {stats[2] or 0}.\nChi tiết toàn bộ GD:\n{json.dumps(all_txs, ensure_ascii=False)}"
+    else:
+        context_str = "\nNgữ cảnh: Không tìm thấy thông tin lô giao dịch."
+    cur.close()
+    conn.close()
+
+    full_system = SYSTEM_PROMPT_CHAT + context_str
+    response = await call_ai(req.message, full_system, req.provider)
+    return {"response": response}
+
+
 @app.delete("/history/{item_id}")
 def delete_history_item(item_id: int):
     try:
@@ -607,6 +711,331 @@ def delete_history_item(item_id: int):
     except Exception as e:
         logger.error("Delete error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ──────────────────────────────────────────────────
+# Batch Predict — Excel Import
+# ──────────────────────────────────────────────────
+
+REQUIRED_TECH_COLS = ["Time", "Amount"] + [f"V{i}" for i in range(1, 29)]
+SAMPLE_DATA_DIR = BASE_DIR / "sample_data"
+
+
+@app.post("/batch-predict/")
+async def batch_predict(
+    file: UploadFile = File(...),
+    model_id: str = Form("random_forest_smote"),
+):
+    """Upload an Excel file, validate format, predict each row, save to DB."""
+
+    # 1. Validate file type
+    if not file.filename:
+        raise HTTPException(400, "Không có file được chọn.")
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in ("xlsx", "csv"):
+        raise HTTPException(400, f"Định dạng '{ext}' không hỗ trợ. Chỉ chấp nhận .xlsx hoặc .csv")
+
+    # 2. Validate model
+    if model_id not in MODEL_REGISTRY:
+        raise HTTPException(400, f"Mô hình '{model_id}' không tồn tại.")
+
+    content = await file.read()
+
+    # 3. Parse file
+    try:
+        if ext == "csv":
+            df_tech = pd.read_csv(io.BytesIO(content))
+            df_display = df_tech.copy()
+            customer_name = "CSV Import"
+            bank_name = ""
+        else:
+            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True)
+            # Check required sheet
+            sheet_names = [s.lower().strip() for s in wb.sheetnames]
+            tech_sheet = None
+            display_sheet = None
+            for s in wb.sheetnames:
+                sl = s.lower().strip()
+                if "ky thuat" in sl or "du lieu" in sl or "technical" in sl:
+                    tech_sheet = s
+                if "sao ke" in sl or "giao dich" in sl or "statement" in sl:
+                    display_sheet = s
+
+            if not tech_sheet:
+                raise HTTPException(400,
+                    "Không tìm thấy sheet 'Du lieu ky thuat'. "
+                    "File Excel phải có sheet chứa dữ liệu kỹ thuật (Time, Amount, V1-V28).")
+
+            # Read tech sheet
+            ws_tech = wb[tech_sheet]
+            tech_data = list(ws_tech.values)
+            if len(tech_data) < 2:
+                raise HTTPException(400, "Sheet dữ liệu kỹ thuật không có dữ liệu.")
+            df_tech = pd.DataFrame(tech_data[1:], columns=tech_data[0])
+
+            # Read display sheet for metadata + descriptions
+            customer_name = ""
+            bank_name = ""
+            display_rows = []
+            if display_sheet:
+                ws_disp = wb[display_sheet]
+                all_rows = list(ws_disp.values)
+                # Extract metadata from first rows
+                for row in all_rows[:4]:
+                    if row and row[0]:
+                        val = str(row[0])
+                        if "khách hàng" in val.lower() or "kh:" in val.lower():
+                            customer_name = val.split(":", 1)[-1].strip()
+                        elif "ngân hàng" in val.lower() or "nh:" in val.lower():
+                            bank_name = val.split(":", 1)[-1].strip()
+                # Find header row (has "Ngày" or "STT")
+                header_idx = None
+                for i, row in enumerate(all_rows):
+                    if row and any(str(c).lower().strip() in ("ngày gd", "stt", "ngày") for c in row if c):
+                        header_idx = i
+                        break
+                if header_idx is not None and header_idx + 1 < len(all_rows):
+                    display_rows = all_rows[header_idx + 1:]
+
+            wb.close()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("File parse error: %s", e)
+        raise HTTPException(400, f"Lỗi đọc file: {str(e)}")
+
+    # 4. Validate required columns
+    missing = [c for c in REQUIRED_TECH_COLS if c not in df_tech.columns]
+    if missing:
+        raise HTTPException(400,
+            f"Thiếu {len(missing)} cột bắt buộc: {', '.join(missing[:5])}... "
+            f"File phải có các cột: Time, Amount, V1-V28")
+
+    # 5. Clean data
+    df_tech = df_tech[REQUIRED_TECH_COLS].apply(pd.to_numeric, errors="coerce").dropna()
+    if len(df_tech) == 0:
+        raise HTTPException(400, "Không có dữ liệu hợp lệ sau khi xử lý.")
+
+    # 6. Run batch prediction
+    ml_model = get_model(model_id)
+    columns = ["Time"] + [f"V{i}" for i in range(1, 29)] + ["Amount"]
+    df_predict = df_tech[columns].copy()
+
+    if SCALER is None:
+        raise HTTPException(500, "Scaler chưa được load.")
+    df_predict[SCALE_COLS] = SCALER.transform(df_predict[SCALE_COLS])
+
+    predictions = ml_model.predict(df_predict)
+    if hasattr(ml_model, "predict_proba"):
+        probas = ml_model.predict_proba(df_predict)
+        fraud_probs = probas[:, 1] if probas.shape[1] > 1 else np.where(predictions == 1, 1.0, 0.0)
+    else:
+        fraud_probs = np.where(predictions == 1, 1.0, 0.0)
+
+    # 7. Build results
+    batch_id = str(uuid.uuid4())[:8]
+    model_display = MODEL_REGISTRY[model_id]["display_name"]
+    results = []
+
+    for i in range(len(df_tech)):
+        pred = int(predictions[i])
+        prob = float(np.clip(fraud_probs[i], 0.0, 1.0))
+
+        # Verdict + confidence (% tương ứng với kết luận)
+        if prob >= 0.75:
+            verdict = "Gian lận"
+            confidence = prob
+        elif prob >= 0.35:
+            verdict = "Nghi ngờ"
+            confidence = prob
+        else:
+            verdict = "An toàn"
+            confidence = 1.0 - prob  # % an toàn
+
+        time_val = float(df_tech.iloc[i]["Time"])
+        amount_val = float(df_tech.iloc[i]["Amount"])
+        v_dict = {f"V{j}": float(df_tech.iloc[i][f"V{j}"]) for j in range(1, 29)}
+
+        # Get display info from sheet 1
+        tx_desc = ""
+        display_date = ""
+        display_time = ""
+        display_amount = ""
+        if i < len(display_rows) and display_rows[i]:
+            row = display_rows[i]
+            display_date = str(row[0]) if row[0] else ""
+            display_time = str(row[1]) if len(row) > 1 and row[1] else ""  # Giờ GD
+            tx_desc = str(row[2]) if len(row) > 2 and row[2] else ""      # Nội dung
+            display_amount = str(row[5]) if len(row) > 5 and row[5] else ""  # Số tiền VNĐ
+
+        results.append({
+            "row": i + 1,
+            "date": display_date,
+            "time": display_time,
+            "description": tx_desc,
+            "amount_display": display_amount,
+            "amount": amount_val,
+            "time_val": time_val,
+            "v_features": v_dict,
+            "prediction": pred,
+            "probability": round(confidence, 4),
+            "verdict": verdict,
+        })
+
+    # 8. Save to DB (non-blocking)
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        p = _ph()
+        for r in results:
+            cur.execute(
+                f"""INSERT INTO fraud_history
+                   (model_used, time_val, amount, v_features, prediction, probability, verdict,
+                    batch_id, customer_name, bank_name, tx_description)
+                   VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+                (model_display, r["time_val"], r["amount"], json.dumps(r["v_features"]),
+                 r["prediction"], r["probability"], r["verdict"],
+                 batch_id, customer_name, bank_name, r["description"]),
+            )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.error("Batch DB save error: %s", e)
+
+    # 8. Summary
+    total = len(results)
+    fraud_count = sum(1 for r in results if r["verdict"] == "Gian lận")
+    suspect_count = sum(1 for r in results if r["verdict"] == "Nghi ngờ")
+    safe_count = total - fraud_count - suspect_count
+
+    return {
+        "batch_id": batch_id,
+        "customer_name": customer_name,
+        "bank_name": bank_name,
+        "model_used": model_display,
+        "total": total,
+        "safe": safe_count,
+        "suspect": suspect_count,
+        "fraud": fraud_count,
+        "results": results,
+    }
+
+
+@app.get("/batch-history/")
+def get_batch_history():
+    """Get list of all batch imports."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT batch_id, customer_name, bank_name, model_used,
+                   COUNT(*) as total,
+                   SUM(CASE WHEN verdict = 'An toàn' THEN 1 ELSE 0 END) as safe_count,
+                   SUM(CASE WHEN verdict = 'Gian lận' THEN 1 ELSE 0 END) as fraud_count,
+                   MIN(timestamp) as imported_at
+            FROM fraud_history
+            WHERE batch_id IS NOT NULL AND batch_id != ''
+            GROUP BY batch_id, customer_name, bank_name, model_used
+            ORDER BY MIN(timestamp) DESC
+            LIMIT 50
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        result = []
+        for r in rows:
+            ts = r[7]
+            if isinstance(ts, str):
+                try: ts = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                except ValueError: pass
+            if hasattr(ts, 'strftime'):
+                ts = ts + timedelta(hours=7)
+                ts = ts.strftime("%Y-%m-%d %H:%M")
+            result.append({
+                "batch_id": r[0], "customer_name": r[1] or "", "bank_name": r[2] or "",
+                "model_used": r[3] or "", "total": r[4], "safe": r[5], "fraud": r[6],
+                "imported_at": str(ts),
+            })
+        return result
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/batch-history/{batch_id}")
+def get_batch_detail(batch_id: str):
+    """Get all transactions for a specific batch."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        p = _ph()
+        cur.execute(
+            f"""SELECT id, timestamp, amount, verdict, probability, model_used,
+                       tx_description, customer_name, bank_name
+                FROM fraud_history WHERE batch_id = {p}
+                ORDER BY id ASC""",
+            (batch_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        if not rows:
+            raise HTTPException(404, "Batch not found")
+
+        result = []
+        for r in rows:
+            result.append({
+                "id": r[0], "timestamp": str(r[1]), "amount": r[2],
+                "verdict": r[3], "probability": r[4], "model_used": r[5],
+                "description": r[6] or "", "customer_name": r[7] or "",
+                "bank_name": r[8] or "",
+            })
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/batch-history/{batch_id}")
+def delete_batch(batch_id: str):
+    """Delete all transactions in a batch."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        p = _ph()
+        cur.execute(f"DELETE FROM fraud_history WHERE batch_id = {p}", (batch_id,))
+        deleted = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        return {"status": "success", "deleted": deleted}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/sample-files/")
+def list_sample_files():
+    """List available sample Excel files."""
+    files = []
+    if SAMPLE_DATA_DIR.exists():
+        for f in sorted(SAMPLE_DATA_DIR.iterdir()):
+            if f.suffix in (".xlsx", ".csv"):
+                files.append({"name": f.name, "size": f.stat().st_size})
+    return {"files": files}
+
+
+@app.get("/sample-files/{filename}")
+def download_sample_file(filename: str):
+    """Download a sample Excel file."""
+    path = SAMPLE_DATA_DIR / filename
+    if not path.exists() or path.suffix not in (".xlsx", ".csv"):
+        raise HTTPException(404, "File not found")
+    return FileResponse(str(path), filename=filename,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 # ──────────────────────────────────────────────────

@@ -1,14 +1,3 @@
-"""
-preprocessing.py — Data loading, feature scaling, and sampling strategies.
-
-Responsibilities:
-    1. Load the raw CSV dataset
-    2. Apply RobustScaler to Amount & Time (save scaler for inference)
-    3. Stratified train/test split
-    4. Three sampling scenarios: none | random under-sampling | SMOTE
-
-The saved scaler is reused in the Ops phase (API inference).
-"""
 
 from __future__ import annotations
 
@@ -40,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────
 # 1. Data loading
-# ──────────────────────────────────────────────────
+# ────────────────────────────────────────────────
 
 
 def load_data(path: str | None = None) -> pd.DataFrame:
@@ -82,23 +71,7 @@ def scale_features(
     fit: bool = True,
     scaler_path: str | None = None,
 ) -> pd.DataFrame:
-    """Apply RobustScaler to Amount & Time columns.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Dataframe (modified in-place copy is returned).
-    fit : bool
-        If True, fit a new scaler and save it.  If False, load an
-        existing scaler (for inference).
-    scaler_path : str | None
-        Override path for the scaler pickle.
-
-    Returns
-    -------
-    pd.DataFrame
-        Dataframe with scaled Amount & Time.
-    """
     save_path = scaler_path or str(MODELS_DIR / "robust_scaler.pkl")
     df = df.copy()
 

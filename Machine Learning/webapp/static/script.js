@@ -381,15 +381,17 @@ function renderHistory(history) {
         return;
     }
 
-    list.innerHTML = filtered.map(item => {
+    list.innerHTML = filtered.map((item, index) => {
         let cls = 'status-safe';
         if (item.verdict === 'Gian lận') cls = 'status-fraud';
         else if (item.verdict === 'Nghi ngờ') cls = 'status-suspicious';
 
+        const displayIndex = filtered.length - index;
+
         return `
             <div class="history-item ${item.id === currentSelectedId ? 'active' : ''}" data-id="${item.id}" onclick="selectHistoryItem(${item.id})">
                 <div class="item-header">
-                    <span>#${item.id}</span>
+                    <span>#${displayIndex}</span>
                     <span style="flex:1; text-align:right; margin-right:8px;">${item.timestamp}</span>
                     <button class="delete-btn" onclick="deleteHistoryItem(event, ${item.id})" title="Xóa giao dịch">
                         <i class="fas fa-times"></i>
@@ -411,7 +413,7 @@ function renderHistory(history) {
     if (sel) {
         const cur = sel.value;
         sel.innerHTML = '<option value="">-- Chọn giao dịch --</option>' +
-            history.map(h => `<option value="${h.id}">#${h.id} - $${h.amount}</option>`).join('');
+            filtered.map((item, index) => `<option value="${item.id}">GD #${filtered.length - index} - $${item.amount.toLocaleString()}</option>`).join('');
         sel.value = cur;
     }
 }
@@ -578,10 +580,415 @@ document.getElementById('chatInput').addEventListener('keypress', (e) => {
 });
 
 // ══════════════════════════════════════════════════
+// MODE SWITCHING (Demo / Nghiệp vụ)
+// ══════════════════════════════════════════════════
+
+let currentMode = 'demo';
+
+function setMode(mode) {
+    currentMode = mode;
+    document.getElementById('demoMode').classList.toggle('hidden', mode !== 'demo');
+    document.getElementById('nghiepvuMode').classList.toggle('hidden', mode !== 'nghiepvu');
+    document.getElementById('modeBtnDemo').classList.toggle('active', mode === 'demo');
+    document.getElementById('modeBtnNghiepvu').classList.toggle('active', mode === 'nghiepvu');
+    
+    // Manage Chatbots visibility based on mode
+    document.getElementById('chatbotSystem').classList.toggle('hidden', mode !== 'demo');
+    document.getElementById('chatbotSystemNV').classList.toggle('hidden', mode !== 'nghiepvu');
+
+    // Show/hide sidebar based on mode
+    const sidebar = document.getElementById('historySidebar');
+    if (sidebar) sidebar.classList.toggle('hidden', mode === 'nghiepvu');
+    if (mode === 'nghiepvu') {
+        loadSampleFiles();
+        loadBatchHistory();
+    }
+}
+
+// ══════════════════════════════════════════════════
+// NGHIỆP VỤ — TAB SWITCHING
+// ══════════════════════════════════════════════════
+
+function setNVTab(tab, btn) {
+    document.getElementById('nvImportTab').classList.toggle('hidden', tab !== 'import');
+    document.getElementById('nvManageTab').classList.toggle('hidden', tab !== 'manage');
+    document.querySelectorAll('.nv-tab').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    if (tab === 'manage') loadBatchHistory();
+}
+
+// ══════════════════════════════════════════════════
+// FILE UPLOAD (Drag & Drop)
+// ══════════════════════════════════════════════════
+
+let selectedFile = null;
+
+function initDropZone() {
+    const dz = document.getElementById('dropZone');
+    const fi = document.getElementById('fileInput');
+    if (!dz || !fi) return;
+
+    dz.addEventListener('click', () => fi.click());
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', e => {
+        e.preventDefault(); dz.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    fi.addEventListener('change', () => { if (fi.files.length) handleFile(fi.files[0]); });
+}
+
+function handleFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    const errEl = document.getElementById('batchError');
+    if (!['xlsx', 'csv'].includes(ext)) {
+        errEl.textContent = `Lỗi: Định dạng ".${ext}" không hỗ trợ. Chỉ chấp nhận .xlsx hoặc .csv`;
+        return;
+    }
+    errEl.textContent = '';
+    selectedFile = file;
+    document.getElementById('fileInfo').classList.remove('hidden');
+    document.getElementById('fileName').textContent = `${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+    document.getElementById('batchPredictBtn').disabled = false;
+}
+
+function clearFile() {
+    selectedFile = null;
+    document.getElementById('fileInput').value = '';
+    document.getElementById('fileInfo').classList.add('hidden');
+    document.getElementById('batchPredictBtn').disabled = true;
+    document.getElementById('batchError').textContent = '';
+}
+
+// ══════════════════════════════════════════════════
+// BATCH PREDICTION
+// ══════════════════════════════════════════════════
+
+async function runBatchPredict() {
+    if (!selectedFile) return;
+    const btn = document.getElementById('batchPredictBtn');
+    const errEl = document.getElementById('batchError');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang phân tích...';
+    errEl.textContent = '';
+
+    const modelId = document.getElementById('batchModelSelector').value;
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('model_id', modelId);
+
+    try {
+        const res = await fetch('/batch-predict/', { method: 'POST', body: formData });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Lỗi không xác định');
+        }
+        const data = await res.json();
+        currentBatchContextId = data.batch_id;
+        const selNV = document.getElementById('chatContextSelectorNV');
+        if (selNV) selNV.value = data.batch_id;
+        renderBatchResults(data);
+    } catch (e) {
+        errEl.textContent = `❌ ${e.message}`;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Chạy Dự đoán';
+    }
+}
+
+function renderBatchResults(data) {
+    document.getElementById('batchResultsPlaceholder').classList.add('hidden');
+    document.getElementById('batchResults').classList.remove('hidden');
+
+    const hasFraud = data.fraud > 0;
+    const summaryClass = hasFraud ? 'summary-fraud' : 'summary-safe';
+    const conclusion = hasFraud
+        ? `⚠️ Phát hiện ${data.fraud} giao dịch bất thường — Cần kiểm tra`
+        : '✅ Tất cả giao dịch đều an toàn';
+
+    document.getElementById('batchSummary').innerHTML = `
+        <div class="summary-header ${summaryClass}">
+            <div class="summary-customer">
+                <i class="fas fa-user"></i> <strong>${data.customer_name || 'N/A'}</strong>
+                <span class="summary-bank">${data.bank_name || ''}</span>
+            </div>
+            <div class="summary-model">Mô hình: ${data.model_used}</div>
+        </div>
+        <div class="summary-stats">
+            <div class="stat-box"><div class="stat-num">${data.total}</div><div class="stat-label">Tổng GD</div></div>
+            <div class="stat-box stat-safe"><div class="stat-num">${data.safe}</div><div class="stat-label">🟢 An toàn</div></div>
+            <div class="stat-box stat-suspect"><div class="stat-num">${data.suspect}</div><div class="stat-label">⚠️ Nghi ngờ</div></div>
+            <div class="stat-box stat-fraud"><div class="stat-num">${data.fraud}</div><div class="stat-label">🔴 Gian lận</div></div>
+        </div>
+        <div class="summary-conclusion ${summaryClass}">${conclusion}</div>`;
+
+    const tbody = document.getElementById('batchTableBody');
+    tbody.innerHTML = data.results.map(r => {
+        const cls = r.verdict === 'Gian lận' ? 'row-fraud' : (r.verdict === 'Nghi ngờ' ? 'row-suspect' : '');
+        const icon = r.verdict === 'Gian lận' ? '🔴' : (r.verdict === 'Nghi ngờ' ? '⚠️' : '🟢');
+        const confLabel = `${r.verdict} ${(r.probability*100).toFixed(1)}%`;
+        const amtDisplay = r.amount_display ? Number(r.amount_display).toLocaleString('vi-VN') : r.amount;
+        return `<tr class="${cls}">
+            <td>${r.row}</td><td>${r.date}</td><td>${r.time || ''}</td><td>${r.description}</td>
+            <td>${amtDisplay}</td>
+            <td><strong>${icon} ${r.verdict}</strong></td>
+            <td>${confLabel}</td></tr>`;
+    }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// SAMPLE FILES
+// ══════════════════════════════════════════════════
+
+async function loadSampleFiles() {
+    try {
+        const res = await fetch('/sample-files/');
+        const data = await res.json();
+        const list = document.getElementById('sampleFilesList');
+        if (!list) return;
+        list.innerHTML = data.files.map(f =>
+            `<a href="/sample-files/${f.name}" class="sample-file-link" download>
+                <i class="fas fa-file-excel"></i> ${f.name}
+                <small>(${(f.size/1024).toFixed(0)} KB)</small>
+            </a>`
+        ).join('');
+    } catch (e) { console.error('Sample files error:', e); }
+}
+
+// ══════════════════════════════════════════════════
+// BATCH HISTORY (Quản lý Giao dịch)
+// ══════════════════════════════════════════════════
+
+async function loadBatchHistory() {
+    try {
+        const res = await fetch('/batch-history/');
+        const data = await res.json();
+        const list = document.getElementById('batchHistoryList');
+        if (!list) return;
+        if (data.length === 0) {
+            list.innerHTML = '<div class="history-empty">Chưa có dữ liệu import...</div>';
+            return;
+        }
+        list.innerHTML = data.map((b, index) => {
+            const hasFraud = b.fraud > 0;
+            const batchNum = data.length - index;
+            return `<div class="batch-item ${hasFraud ? 'batch-has-fraud' : ''}" onclick="viewBatchDetail('${b.batch_id}')">
+                <div class="batch-item-header">
+                    <div>
+                        <span style="display:inline-block; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:12px; font-size:0.8rem; font-weight:bold; margin-right:8px;">Lô #${batchNum}</span>
+                        <strong><i class="fas fa-user"></i> ${b.customer_name || 'N/A'}</strong>
+                        <span style="margin-left:8px; color:#64748b;">${b.bank_name || ''}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <span style="font-size: 0.85rem; color: #3b82f6; font-weight: 500;">Mô hình: ${b.model_used || 'N/A'}</span>
+                        <button class="delete-btn" onclick="event.stopPropagation();deleteBatch('${b.batch_id}')" title="Xóa">
+                            <i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+                <div class="batch-item-stats">
+                    <span>📊 ${b.total} GD</span>
+                    <span>🟢 ${b.safe}</span>
+                    <span>🔴 ${b.fraud}</span>
+                    <span class="batch-date">${b.imported_at}</span>
+                </div>
+            </div>`;
+        }).join('');
+        
+        // Populate chat NV context selector
+        const selNV = document.getElementById('chatContextSelectorNV');
+        if (selNV) {
+            selNV.innerHTML = '<option value="">-- Chọn lô giao dịch --</option>' +
+                data.map((b, index) => `<option value="${b.batch_id}">Lô #${data.length - index} - ${b.customer_name} (${b.bank_name})</option>`).join('');
+            if (currentBatchContextId) selNV.value = currentBatchContextId;
+        }
+    } catch (e) { console.error('Batch history error:', e); }
+}
+
+async function viewBatchDetail(batchId) {
+    try {
+        const res = await fetch(`/batch-history/${batchId}`);
+        const data = await res.json();
+        const panel = document.getElementById('batchDetailPanel');
+        panel.classList.remove('hidden');
+        currentBatchContextId = batchId;
+        const selNV = document.getElementById('chatContextSelectorNV');
+        if (selNV) selNV.value = batchId;
+        const first = data[0] || {};
+        const fraud = data.filter(r => r.verdict === 'Gian lận').length;
+        document.getElementById('batchDetailSummary').innerHTML = `
+            <div class="summary-header ${fraud > 0 ? 'summary-fraud' : 'summary-safe'}">
+                <strong>${first.customer_name || 'N/A'}</strong> — ${first.bank_name || ''}
+                <span style="margin-left:auto;">${data.length} giao dịch | 🔴 ${fraud} gian lận</span>
+            </div>`;
+        document.getElementById('batchDetailBody').innerHTML = data.map((r, i) => {
+            const cls = r.verdict === 'Gian lận' ? 'row-fraud' : (r.verdict === 'Nghi ngờ' ? 'row-suspect' : '');
+            const icon = r.verdict === 'Gian lận' ? '🔴' : (r.verdict === 'Nghi ngờ' ? '⚠️' : '🟢');
+            return `<tr class="${cls}"><td>${i+1}</td><td>${r.description}</td><td>$${r.amount}</td>
+                <td>${icon} ${r.verdict}</td><td>${(r.probability*100).toFixed(1)}%</td></tr>`;
+        }).join('');
+        panel.scrollIntoView({ behavior: 'smooth' });
+    } catch (e) { console.error('Batch detail error:', e); }
+}
+
+async function deleteBatch(batchId) {
+    if (!confirm('Xóa tất cả giao dịch trong batch này?')) return;
+    try {
+        await fetch(`/batch-history/${batchId}`, { method: 'DELETE' });
+        loadBatchHistory();
+        document.getElementById('batchDetailPanel').classList.add('hidden');
+    } catch (e) { console.error('Delete batch error:', e); }
+}
+
+// ══════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
     loadModels();
     loadHistory();
+    initDropZone();
+    // Populate batch model selector too
+    const bms = document.getElementById('batchModelSelector');
+    if (bms) {
+        fetch('/models/').then(r => r.json()).then(data => {
+            bms.innerHTML = data.models.map(m =>
+                `<option value="${m.id}" ${m.id === data.default ? 'selected' : ''}>${m.display_name}</option>`
+            ).join('');
+        }).catch(() => {});
+    }
 });
+
+// ══════════════════════════════════════════════════
+// AI CHATBOT & ANALYSIS (NGHIỆP VỤ MODE)
+// ══════════════════════════════════════════════════
+
+let currentBatchContextId = null;
+let currentChatProviderNV = 'gemini';
+let currentAiProviderNV = 'gemini';
+
+function toggleChatNV() {
+    const w = document.getElementById('chatWindowNV');
+    w.classList.toggle('hidden');
+    if (!w.classList.contains('hidden') && document.getElementById('chatBodyNV').children.length <= 1) {
+        addChatMessageNV('Xin chào! Tôi có thể phân tích lô giao dịch hiện tại giúp bạn. Bạn cần hỏi gì?', false);
+    }
+}
+
+function resetChatNV() {
+    document.getElementById('chatBodyNV').innerHTML = '';
+    addChatMessageNV('Lịch sử trò chuyện đã được làm mới. Bạn cần hỗ trợ gì về các lô giao dịch?', false);
+}
+
+function setChatProviderNV(provider, btn) {
+    currentChatProviderNV = provider;
+    document.querySelectorAll('#chatAiToggleNV .provider-btn').forEach(b => {
+        if (b.dataset.provider === provider) {
+            b.classList.add('active');
+        } else {
+            b.classList.remove('active');
+        }
+    });
+}
+
+function setAiProviderNV(provider, btn) {
+    currentAiProviderNV = provider;
+    document.querySelectorAll('#chatAiToggleNV_import .provider-btn, #chatAiToggleNV_manage .provider-btn').forEach(b => {
+        if (b.dataset.provider === provider) {
+            b.classList.add('active');
+        } else {
+            b.classList.remove('active');
+        }
+    });
+}
+
+function addChatMessageNV(msg, isUser=false) {
+    const body = document.getElementById('chatBodyNV');
+    const div = document.createElement('div');
+    div.className = `message ${isUser ? 'user-msg' : 'ai-msg'}`;
+    if (isUser) {
+        div.textContent = msg;
+    } else {
+        div.innerHTML = marked.parse(msg);
+    }
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+}
+
+async function sendChatMessageNV() {
+    const input = document.getElementById('chatInputNV');
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    addChatMessageNV(msg, true);
+    input.value = '';
+
+    const payload = {
+        message: msg,
+        provider: currentChatProviderNV,
+        batch_id: currentBatchContextId || ""
+    };
+
+    // Show typing indicator
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'message ai-msg typing-indicator';
+    typingDiv.innerHTML = '<i class="fas fa-ellipsis-h fa-fade"></i>';
+    document.getElementById('chatBodyNV').appendChild(typingDiv);
+
+    try {
+        const res = await fetch('/chat-batch/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        document.getElementById('chatBodyNV').removeChild(typingDiv);
+        const data = await res.json();
+        addChatMessageNV(data.response, false);
+    } catch (e) {
+        if (document.getElementById('chatBodyNV').contains(typingDiv)) {
+            document.getElementById('chatBodyNV').removeChild(typingDiv);
+        }
+        addChatMessageNV('Xin lỗi, đã có lỗi kết nối đến AI. Vui lòng thử lại.', false);
+        console.error(e);
+    }
+}
+
+document.getElementById('chatInputNV')?.addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') sendChatMessageNV();
+});
+
+function updateChatContextNV() {
+    const sel = document.getElementById('chatContextSelectorNV');
+    currentBatchContextId = sel.value || null;
+    resetChatNV();
+}
+
+async function triggerBatchAIAnalysis() {
+    if (!currentBatchContextId) {
+        alert("Vui lòng tải lên một lô giao dịch hoặc chọn một lô giao dịch từ phần Quản lý trước.");
+        return;
+    }
+    
+    let container = document.getElementById('aiExplanationNV_import');
+    let content = document.getElementById('aiExplanationContentNV_import');
+    if (!document.getElementById('nvManageTab').classList.contains('hidden')) {
+        container = document.getElementById('aiExplanationNV_manage');
+        content = document.getElementById('aiExplanationContentNV_manage');
+    }
+    
+    container.classList.remove('hidden');
+    content.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div><p style="text-align:center;">AI đang phân tích tổng quan...</p>';
+
+    try {
+        const res = await fetch('/analyze-batch/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ batch_id: currentBatchContextId, provider: currentAiProviderNV })
+        });
+        if (!res.ok) throw new Error("Analysis failed");
+        const data = await res.json();
+        content.innerText = data.analysis;
+    } catch (e) {
+        content.innerHTML = `<p style="color:#ef4444; text-align:center;">Lỗi hệ thống: ${e.message}. Vui lòng thử API khác.</p>`;
+        console.error(e);
+    }
+}

@@ -8,13 +8,13 @@
     <meta name="description" content="Hệ thống phát hiện gian lận thẻ tín dụng sử dụng Machine Learning với nhiều mô hình AI.">
     <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="/static/style.css?v=3">
+    <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 
 <body>
     <div class="app-layout">
         <!-- History Sidebar -->
-        <aside class="history-sidebar">
+        <aside class="history-sidebar" id="historySidebar">
             <div class="sidebar-header">
                 <i class="fas fa-history"></i>
                 <span>Lịch sử Giao dịch</span>
@@ -41,6 +41,15 @@
                     <h1><i class="fas fa-shield-halved"></i> Fraud <span class="highlight">Guard Pro</span></h1>
                 </div>
                 <div class="header-actions">
+                    <!-- Mode Toggle -->
+                    <div class="mode-toggle" id="modeToggle">
+                        <button class="mode-btn" id="modeBtnNghiepvu" onclick="setMode('nghiepvu')">
+                            <i class="fas fa-building-columns"></i> Nghiệp vụ
+                        </button>
+                        <button class="mode-btn active" id="modeBtnDemo" onclick="setMode('demo')">
+                            <i class="fas fa-flask"></i> Demo
+                        </button>
+                    </div>
                     <button id="themeToggleBtn" class="btn" onclick="toggleTheme()" title="Đổi giao diện">
                         <i class="fas fa-sun" id="themeIcon"></i>
                     </button>
@@ -50,116 +59,254 @@
                 </div>
             </header>
 
-            <!-- Model Selector Bar -->
-            <div class="model-selector-bar">
-                <label><i class="fas fa-brain"></i> Mô hình ML:</label>
-                <select id="modelSelector">
-                    <option value="">Đang tải...</option>
-                </select>
-                <span class="model-badge" id="modelBadge">—</span>
-            </div>
-
-            <div class="main-content">
-                <div class="form-panel glass-card">
-                    <div class="panel-header">
-                        <h2>Thông số Giao dịch</h2>
-                        <div class="auto-fill-controls">
-                            <button type="button" class="btn btn-secondary fill-btn" onclick="fillSafeData()">
-                                <i class="fas fa-magic"></i> An toàn
-                            </button>
-                            <button type="button" class="btn btn-secondary fill-fraud-btn" onclick="fillFraudData()"
-                                style="border-color: var(--fraud); color: var(--fraud);">
-                                <i class="fas fa-skull-crossbones"></i> Gian lận
-                            </button>
-                        </div>
-                    </div>
-
-                    <form id="predictionForm" class="input-group-box">
-                        <div class="input-grid">
-                            <div class="input-group highlight-group">
-                                <label for="Time">Thời gian (Giây) <small id="timeInMinutes">= (0.0 phút)</small></label>
-                                <div class="input-container-rel">
-                                    <input type="number" id="Time" name="Time" value="0" step="1">
-                                    <span class="warning-icon" title="Ngoài khoảng cho phép">!</span>
-                                </div>
-                                <span class="range-hint" style="text-align:left;">Khoảng: 0 - 172.800</span>
-                            </div>
-                            <div class="input-group highlight-group">
-                                <label for="Amount">Số tiền ($)</label>
-                                <div class="input-container-rel">
-                                    <input type="number" id="Amount" name="Amount" value="0.00" step="0.01">
-                                    <span class="warning-icon" title="Ngoài khoảng cho phép">!</span>
-                                </div>
-                                <span class="range-hint" style="text-align:left;">Khoảng: 0 - 25.000</span>
-                            </div>
-                        </div>
-
-                        <div class="divider"><span>Đặc trưng PCA (V1 - V28)</span></div>
-
-                        <div class="v-grid-container">
-                            <div class="input-grid v-grid">
-                                <script>
-                                    for (let i = 1; i <= 28; i++) {
-                                        document.write(`
-                                            <div class="input-group v-input">
-                                                <label for="V${i}">V${i}</label>
-                                                <div class="input-container-rel">
-                                                    <input type="number" step="any" id="V${i}" name="V${i}" required value="0">
-                                                    <span class="warning-icon" title="Ngoài khoảng cho phép">!</span>
-                                                </div>
-                                            </div>
-                                        `);
-                                    }
-                                </script>
-                            </div>
-                            <div class="v-range-info">Ghi chú: Các giá trị PCA (V1 - V28) thông thường nằm trong khoảng từ -5.0 đến 5.0.</div>
-                        </div>
-                    </form>
+            <!-- ═══════════ DEMO MODE (existing) ═══════════ -->
+            <div id="demoMode">
+                <!-- Model Selector Bar -->
+                <div class="model-selector-bar">
+                    <label><i class="fas fa-brain"></i> Mô hình ML:</label>
+                    <select id="modelSelector">
+                        <option value="">Đang tải...</option>
+                    </select>
+                    <span class="model-badge" id="modelBadge">—</span>
                 </div>
 
-                <div class="result-panel">
-                    <div class="glass-card result-panel-bottom" id="resultCardContainer">
-                        <div class="result-card" id="resultCard">
-                            <h3>Kết quả Phân tích</h3>
-                            <div class="status-indicator">
-                                <div class="spinner" id="spinner"></div>
-                                <div class="icon-circle" id="resultIcon">
-                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                    </svg>
-                                </div>
-                            </div>
-                            <div class="result-text">
-                                <h2 id="verdictTitle">Đang chờ Dữ liệu</h2>
-                                <p id="probabilityText">Nhập thông số để chạy mô hình ML...</p>
-                                <div id="modelUsedLabel" class="model-used-label hidden"></div>
-                            </div>
-                            <div class="progress-bar-container hidden" id="probContainer">
-                                <div class="progress-bar" id="probBar"></div>
-                            </div>
-                            <button type="submit" form="predictionForm" class="btn btn-primary analyze-btn" id="submitBtn">
-                                <i class="fas fa-search"></i> Bắt đầu Dự đoán
-                            </button>
-                            <!-- AI Provider Toggle + Analyze Button -->
-                            <div class="hidden" id="aiActionBar" style="display:flex;flex-direction:column;gap:10px;">
-                                <div class="ai-provider-toggle" id="aiProviderToggle">
-                                    <button class="provider-btn active" data-provider="gemini" onclick="setAiProvider('gemini', this)">
-                                        <i class="fas fa-bolt"></i> Gemini
-                                    </button>
-                                    <button class="provider-btn" data-provider="groq" onclick="setAiProvider('groq', this)">
-                                        <i class="fas fa-microchip"></i> Groq
-                                    </button>
-                                </div>
-                                <button type="button" class="btn btn-primary analyze-btn" id="aiAnalyzeBtn" onclick="triggerAIAnalysis()">
-                                    <i class="fas fa-robot"></i> Phân tích bằng AI
+                <div class="main-content">
+                    <div class="form-panel glass-card">
+                        <div class="panel-header">
+                            <h2>Thông số Giao dịch</h2>
+                            <div class="auto-fill-controls">
+                                <button type="button" class="btn btn-secondary fill-btn" onclick="fillSafeData()">
+                                    <i class="fas fa-magic"></i> An toàn
+                                </button>
+                                <button type="button" class="btn btn-secondary fill-fraud-btn" onclick="fillFraudData()"
+                                    style="border-color: var(--fraud); color: var(--fraud);">
+                                    <i class="fas fa-skull-crossbones"></i> Gian lận
                                 </button>
                             </div>
-                            <!-- AI Analysis Output — below the button -->
-                            <div id="aiAnalysisBox" class="ai-analysis-output scroll-box hidden">
-                                <div id="aiAnalysisText"></div>
+                        </div>
+
+                        <form id="predictionForm" class="input-group-box">
+                            <div class="input-grid">
+                                <div class="input-group highlight-group">
+                                    <label for="Time">Thời gian (Giây) <small id="timeInMinutes">= (0.0 phút)</small></label>
+                                    <div class="input-container-rel">
+                                        <input type="number" id="Time" name="Time" value="0" step="1">
+                                        <span class="warning-icon" title="Ngoài khoảng cho phép">!</span>
+                                    </div>
+                                    <span class="range-hint" style="text-align:left;">Khoảng: 0 - 172.800</span>
+                                </div>
+                                <div class="input-group highlight-group">
+                                    <label for="Amount">Số tiền ($)</label>
+                                    <div class="input-container-rel">
+                                        <input type="number" id="Amount" name="Amount" value="0.00" step="0.01">
+                                        <span class="warning-icon" title="Ngoài khoảng cho phép">!</span>
+                                    </div>
+                                    <span class="range-hint" style="text-align:left;">Khoảng: 0 - 25.000</span>
+                                </div>
                             </div>
-                            <div class="error-msg" id="errorMsg"></div>
+
+                            <div class="divider"><span>Đặc trưng PCA (V1 - V28)</span></div>
+
+                            <div class="v-grid-container">
+                                <div class="input-grid v-grid">
+                                    <script>
+                                        for (let i = 1; i <= 28; i++) {
+                                            document.write(`
+                                                <div class="input-group v-input">
+                                                    <label for="V${i}">V${i}</label>
+                                                    <div class="input-container-rel">
+                                                        <input type="number" step="any" id="V${i}" name="V${i}" required value="0">
+                                                        <span class="warning-icon" title="Ngoài khoảng cho phép">!</span>
+                                                    </div>
+                                                </div>
+                                            `);
+                                        }
+                                    </script>
+                                </div>
+                                <div class="v-range-info">Ghi chú: Các giá trị PCA (V1 - V28) thông thường nằm trong khoảng từ -5.0 đến 5.0.</div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="result-panel">
+                        <div class="glass-card result-panel-bottom" id="resultCardContainer">
+                            <div class="result-card" id="resultCard">
+                                <h3>Kết quả Phân tích</h3>
+                                <div class="status-indicator">
+                                    <div class="spinner" id="spinner"></div>
+                                    <div class="icon-circle" id="resultIcon">
+                                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="result-text">
+                                    <h2 id="verdictTitle">Đang chờ Dữ liệu</h2>
+                                    <p id="probabilityText">Nhập thông số để chạy mô hình ML...</p>
+                                    <div id="modelUsedLabel" class="model-used-label hidden"></div>
+                                </div>
+                                <div class="progress-bar-container hidden" id="probContainer">
+                                    <div class="progress-bar" id="probBar"></div>
+                                </div>
+                                <button type="submit" form="predictionForm" class="btn btn-primary analyze-btn" id="submitBtn">
+                                    <i class="fas fa-search"></i> Bắt đầu Dự đoán
+                                </button>
+                                <!-- AI Provider Toggle + Analyze Button -->
+                                <div class="hidden" id="aiActionBar" style="display:flex;flex-direction:column;gap:10px;">
+                                    <div class="ai-provider-toggle" id="aiProviderToggle">
+                                        <button class="provider-btn active" data-provider="gemini" onclick="setAiProvider('gemini', this)">
+                                            <i class="fas fa-bolt"></i> Gemini
+                                        </button>
+                                        <button class="provider-btn" data-provider="groq" onclick="setAiProvider('groq', this)">
+                                            <i class="fas fa-microchip"></i> Groq
+                                        </button>
+                                    </div>
+                                    <button type="button" class="btn btn-primary analyze-btn" id="aiAnalyzeBtn" onclick="triggerAIAnalysis()">
+                                        <i class="fas fa-robot"></i> Phân tích bằng AI
+                                    </button>
+                                </div>
+                                <!-- AI Analysis Output -->
+                                <div id="aiAnalysisBox" class="ai-analysis-output scroll-box hidden">
+                                    <div id="aiAnalysisText"></div>
+                                </div>
+                                <div class="error-msg" id="errorMsg"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ NGHIỆP VỤ MODE (new) ═══════════ -->
+            <div id="nghiepvuMode" class="hidden">
+                <!-- Sub-tabs -->
+                <div class="nv-tab-bar">
+                    <button class="nv-tab active" id="tabImport" onclick="setNVTab('import', this)">
+                        <i class="fas fa-file-excel"></i> Import Excel
+                    </button>
+                    <button class="nv-tab" id="tabManage" onclick="setNVTab('manage', this)">
+                        <i class="fas fa-clipboard-list"></i> Quản lý Giao dịch
+                    </button>
+                </div>
+
+                <!-- Import Excel Tab -->
+                <div id="nvImportTab" class="nv-content">
+                    <!-- Model selector for batch -->
+                    <div class="model-selector-bar">
+                        <label><i class="fas fa-brain"></i> Mô hình ML:</label>
+                        <select id="batchModelSelector">
+                            <option value="">Đang tải...</option>
+                        </select>
+                    </div>
+
+                    <div class="nv-grid">
+                        <!-- Upload Area -->
+                        <div class="glass-card upload-card">
+                            <h2 class="nv-title"><i class="fas fa-cloud-upload-alt"></i> Tải lên Sao kê Giao dịch</h2>
+                            <div class="drop-zone" id="dropZone">
+                                <i class="fas fa-file-excel drop-icon"></i>
+                                <p class="drop-text">Kéo thả file Excel vào đây</p>
+                                <p class="drop-hint">hoặc click để chọn file (.xlsx, .csv)</p>
+                                <input type="file" id="fileInput" accept=".xlsx,.csv" hidden>
+                            </div>
+                            <div id="fileInfo" class="file-info hidden">
+                                <i class="fas fa-file-alt"></i>
+                                <span id="fileName"></span>
+                                <button onclick="clearFile()" class="file-remove"><i class="fas fa-times"></i></button>
+                            </div>
+                            <button class="btn btn-primary analyze-btn" id="batchPredictBtn" onclick="runBatchPredict()" disabled>
+                                <i class="fas fa-play"></i> Chạy Dự đoán
+                            </button>
+                            <div class="error-msg" id="batchError"></div>
+                        </div>
+
+                        <!-- Results Area -->
+                        <div class="glass-card results-card" id="batchResultsCard">
+                            <div id="batchResultsPlaceholder" class="results-placeholder">
+                                <i class="fas fa-chart-bar"></i>
+                                <p>Kết quả phân tích sẽ hiển thị tại đây</p>
+                            </div>
+                            <div id="batchResults" class="hidden">
+                                <!-- Summary -->
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px; gap:15px;">
+                                    <div id="batchSummary" class="batch-summary" style="margin-bottom:0; flex:1;"></div>
+                                </div>
+                                <!-- Table -->
+                                <div class="batch-table-wrap">
+                                    <table class="batch-table" id="batchTable">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Ngày GD</th>
+                                                <th>Giờ GD</th>
+                                                <th>Nội dung</th>
+                                                <th>Số tiền (VNĐ)</th>
+                                                <th>Kết luận</th>
+                                                <th>Độ tin cậy</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="batchTableBody"></tbody>
+                                    </table>
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:10px; margin-top:20px;">
+                                    <div class="ai-provider-toggle" id="chatAiToggleNV_import">
+                                        <button class="provider-btn active" data-provider="gemini" onclick="setAiProviderNV('gemini', this)">
+                                            <i class="fas fa-bolt"></i> Gemini
+                                        </button>
+                                        <button class="provider-btn" data-provider="groq" onclick="setAiProviderNV('groq', this)">
+                                            <i class="fas fa-microchip"></i> Groq
+                                        </button>
+                                    </div>
+                                    <button class="btn btn-secondary ai-btn" onclick="triggerBatchAIAnalysis()">
+                                        <i class="fas fa-robot"></i> Phân tích bằng AI
+                                    </button>
+                                </div>
+                                <div id="aiExplanationNV_import" class="glass-card ai-explanation hidden" style="margin-top:20px;">
+                                    <h3><i class="fas fa-robot"></i> Phân tích từ AI</h3>
+                                    <div id="aiExplanationContentNV_import" class="markdown-body"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manage Tab -->
+                <div id="nvManageTab" class="nv-content hidden">
+                    <div class="glass-card">
+                        <h2 class="nv-title"><i class="fas fa-clipboard-list"></i> Quản lý Giao dịch đã Import</h2>
+                        <div id="batchHistoryList" class="batch-history-list">
+                            <div class="history-empty">Chưa có dữ liệu import...</div>
+                        </div>
+                    </div>
+                    <!-- Detail panel -->
+                    <div id="batchDetailPanel" class="glass-card hidden" style="margin-top:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px; gap:15px;">
+                            <div id="batchDetailSummary" class="batch-summary" style="margin-bottom:0; flex:1;"></div>
+                        </div>
+                        <div class="batch-table-wrap">
+                            <table class="batch-table">
+                                <thead>
+                                    <tr><th>#</th><th>Nội dung</th><th>Số tiền</th><th>Kết luận</th><th>Xác suất</th></tr>
+                                </thead>
+                                <tbody id="batchDetailBody"></tbody>
+                            </table>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:10px; margin-top:20px;">
+                            <div class="ai-provider-toggle" id="chatAiToggleNV_manage">
+                                <button class="provider-btn active" data-provider="gemini" onclick="setAiProviderNV('gemini', this)">
+                                    <i class="fas fa-bolt"></i> Gemini
+                                </button>
+                                <button class="provider-btn" data-provider="groq" onclick="setAiProviderNV('groq', this)">
+                                    <i class="fas fa-microchip"></i> Groq
+                                </button>
+                            </div>
+                            <button class="btn btn-secondary ai-btn" onclick="triggerBatchAIAnalysis()">
+                                <i class="fas fa-robot"></i> Phân tích bằng AI
+                            </button>
+                        </div>
+                        <div id="aiExplanationNV_manage" class="glass-card ai-explanation hidden" style="margin-top:20px;">
+                            <h3><i class="fas fa-robot"></i> Phân tích từ AI</h3>
+                            <div id="aiExplanationContentNV_manage" class="markdown-body"></div>
                         </div>
                     </div>
                 </div>
@@ -167,7 +314,7 @@
         </div>
     </div>
 
-    <!-- AI Chatbot -->
+    <!-- AI Chatbot (Demo Tab) -->
     <div id="chatbotSystem" class="chatbot-system">
         <div class="chat-bubble" onclick="toggleChat()">
             <i class="fas fa-robot"></i>
@@ -180,7 +327,7 @@
                     </button>
                     <div class="chat-title">
                         <i class="fas fa-robot"></i>
-                        <span>Trợ lý AI</span>
+                        <span>Trợ lý AI (Demo)</span>
                     </div>
                 </div>
                 <div class="chat-header-actions">
@@ -208,6 +355,53 @@
             <div class="chat-input-area">
                 <input type="text" id="chatInput" placeholder="Hỏi AI về giao dịch...">
                 <button class="chat-send-btn" onclick="sendChatMessage()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Chatbot (Nghiệp Vụ Tab) -->
+    <div id="chatbotSystemNV" class="chatbot-system hidden">
+        <div class="chat-bubble" onclick="toggleChatNV()">
+            <i class="fas fa-robot"></i>
+        </div>
+        <div id="chatWindowNV" class="chat-window hidden">
+            <div class="chat-header" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="chat-header-left">
+                        <button class="chat-refresh" onclick="resetChatNV()" title="Làm mới">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                        <div class="chat-title">
+                            <i class="fas fa-robot"></i>
+                            <span>Trợ lý AI (Nghiệp Vụ)</span>
+                        </div>
+                    </div>
+                    <div class="chat-header-actions">
+                        <button class="chat-close" onclick="toggleChatNV()">&times;</button>
+                    </div>
+                </div>
+                <select id="chatContextSelectorNV" class="chat-context-select" onchange="updateChatContextNV()" style="width: 100%; border-radius: 4px; padding: 4px 8px; border: 1px solid rgba(255,255,255,0.3); background: rgba(0,0,0,0.1); color: white; margin-top: 5px;">
+                    <option value="" style="color: #333;">-- Chọn lô giao dịch --</option>
+                </select>
+            </div>
+            <!-- AI Provider bar in chat -->
+            <div class="chat-provider-bar">
+                <span>AI Model:</span>
+                <div class="ai-provider-toggle" id="chatAiToggleNV" style="flex:1;">
+                    <button class="provider-btn active" data-provider="gemini" onclick="setChatProviderNV('gemini', this)">
+                        <i class="fas fa-bolt"></i> Gemini
+                    </button>
+                    <button class="provider-btn" data-provider="groq" onclick="setChatProviderNV('groq', this)">
+                        <i class="fas fa-microchip"></i> Groq
+                    </button>
+                </div>
+            </div>
+            <div class="chat-body" id="chatBodyNV">
+                <div class="message ai-msg">Xin chào! Đây là kênh AI phân tích chuyên sâu cho các lô giao dịch khách hàng.</div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInputNV" placeholder="Hỏi AI về lô giao dịch này...">
+                <button class="chat-send-btn" onclick="sendChatMessageNV()"><i class="fas fa-paper-plane"></i></button>
             </div>
         </div>
     </div>
@@ -261,7 +455,7 @@
         </div>
     </div>
 
-    <script src="/static/script.js?v=3"></script>
+    <script src="/static/script.js?v=6"></script>
 </body>
 
 </html>

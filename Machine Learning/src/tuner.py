@@ -118,51 +118,6 @@ def _cv_f1(model: Any, X: np.ndarray, y: np.ndarray) -> float:
 
 
 # ──────────────────────────────────────────────────
-# MLflow logging (optional)
-# ──────────────────────────────────────────────────
-
-
-def _log_tuning_to_mlflow(model_name: str, study: optuna.Study) -> None:
-    """Log all Optuna trials + best result to MLflow if MLFLOW_TRACKING_URI is set."""
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
-    if not tracking_uri:
-        return
-
-    try:
-        import mlflow
-
-        mlflow.set_tracking_uri(tracking_uri)
-        mlflow.set_experiment("credit_card_fraud_detection")
-
-        # Log each trial individually (for parallel coordinates & scatter plots)
-        completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
-        for trial in completed:
-            with mlflow.start_run(run_name=f"tune_{model_name}_trial_{trial.number}"):
-                mlflow.log_params(trial.params)
-                mlflow.log_metric("f1_score", trial.value)
-                mlflow.set_tag("model", model_name)
-                mlflow.set_tag("stage", "tuning")
-                mlflow.set_tag("trial_number", str(trial.number))
-
-        # Log best trial summary
-        with mlflow.start_run(run_name=f"tune_{model_name}_BEST"):
-            mlflow.log_params(study.best_params)
-            mlflow.log_metric("best_f1_score", study.best_value)
-            mlflow.set_tag("model", model_name)
-            mlflow.set_tag("stage", "tuning_best")
-            mlflow.set_tag("total_trials", str(len(completed)))
-
-        logger.info(
-            "Logged %d tuning trials to MLflow for '%s'",
-            len(completed), model_name,
-        )
-    except ImportError:
-        logger.warning("mlflow not installed — skipping MLflow logging.")
-    except Exception as exc:
-        logger.error("MLflow tuning log failed: %s", exc)
-
-
-# ──────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────
 
@@ -227,9 +182,6 @@ def tune_model(
         "Best F1 for '%s': %.4f  |  Params: %s",
         model_name, best_f1, best_params,
     )
-
-    # Log to MLflow (if tracking URI is set)
-    _log_tuning_to_mlflow(model_name, study)
 
     # Persist best params as JSON
     out_path = REPORTS_DIR / f"best_params_{model_name}.json"

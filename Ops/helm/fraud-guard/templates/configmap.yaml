@@ -6,7 +6,7 @@ metadata:
     app: fraud-detection
 data:
   DB_TYPE: "postgresql"
-  DB_HOST: "postgres-service"
-  DB_PORT: "{{ .Values.postgres.service.port }}"
-  DB_NAME: "{{ .Values.postgres.database }}"
-  DB_USER: "{{ .Values.postgres.username }}"
+  PG_HOST: "postgres-service"
+  PG_PORT: "{{ .Values.postgres.service.port }}"
+  PG_DBNAME: "{{ .Values.postgres.database }}"
+  PG_USER: "{{ .Values.postgres.username }}"

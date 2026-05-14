@@ -25,9 +25,6 @@ from src.config import MODEL_NAMES, RANDOM_STATE
 
 logger = logging.getLogger(__name__)
 
-# ──────────────────────────────────────────────────
-# Default hyperparameters (conservative baselines)
-# ──────────────────────────────────────────────────
 
 _DEFAULTS: Dict[str, Dict[str, Any]] = {
     "random_forest": {
@@ -41,7 +38,8 @@ _DEFAULTS: Dict[str, Dict[str, Any]] = {
     "logistic_regression": {
         "C": 1.0,
         # "l1_ratio": 0,        # 0 = L2 penalty (sklearn ≥1.8 style)
-        "solver": "lbfgs",     # supports l1_ratio
+        "solver": "saga",      # supports elasticnet/l1_ratio
+        "penalty": "elasticnet",
         "max_iter": 1000,
         "class_weight": "balanced",
         "random_state": RANDOM_STATE,

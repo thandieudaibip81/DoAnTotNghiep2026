@@ -951,4 +951,188 @@ body {
     .header { flex-direction: column; gap: 15px; }
     .header-actions { position: static; transform: none; }
     .model-selector-bar { flex-direction: column; }
+    .nv-grid { grid-template-columns: 1fr !important; }
 }
+
+/* ═══════════════════════════════════════════════════
+   NGHIỆP VỤ MODE — New Components
+   ═══════════════════════════════════════════════════ */
+
+.hidden { display: none !important; }
+
+/* Mode Toggle */
+.mode-toggle {
+    display: flex; border: var(--border-width) solid var(--card-border);
+    border-radius: 10px; overflow: hidden; box-shadow: var(--shadow-active);
+}
+.mode-btn {
+    padding: 10px 20px; border: none; background: var(--card-bg); color: var(--text-main);
+    font-family: inherit; font-weight: 800; font-size: 0.78rem; cursor: pointer;
+    transition: all var(--transition); text-transform: uppercase;
+    display: flex; align-items: center; gap: 6px;
+}
+.mode-btn.active { background: var(--secondary); color: white; }
+.mode-btn:not(:last-child) { border-right: 2px solid var(--card-border); }
+
+/* Nghiệp vụ Tab Bar */
+.nv-tab-bar {
+    display: flex; gap: 0; margin-bottom: 25px;
+    border: var(--border-width) solid var(--card-border); border-radius: 14px;
+    overflow: hidden; box-shadow: var(--shadow-small); background: var(--card-bg);
+}
+.nv-tab {
+    flex: 1; padding: 16px 24px; border: none; background: var(--card-bg);
+    color: var(--text-main); font-family: inherit; font-weight: 800; font-size: 0.9rem;
+    cursor: pointer; transition: all var(--transition); text-transform: uppercase;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.nv-tab.active { background: var(--secondary); color: white; }
+.nv-tab:not(:last-child) { border-right: var(--border-width) solid var(--card-border); }
+.nv-tab:hover:not(.active) { background: rgba(99,102,241,0.1); }
+
+.nv-title {
+    font-weight: 900; text-transform: uppercase; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 6px solid var(--secondary); padding-bottom: 10px;
+}
+
+.nv-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 25px; }
+
+/* Drop Zone */
+.drop-zone {
+    border: 4px dashed var(--card-border); border-radius: 16px;
+    padding: 40px 20px; text-align: center; cursor: pointer;
+    transition: all var(--transition); margin-bottom: 20px;
+    background: rgba(99,102,241,0.03);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--secondary); background: rgba(99,102,241,0.08);
+    transform: scale(1.01);
+}
+.drop-icon { font-size: 3rem; color: var(--secondary); margin-bottom: 10px; }
+.drop-text { font-weight: 800; font-size: 1.1rem; margin-bottom: 5px; }
+.drop-hint { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+
+.file-info {
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    background: rgba(99,102,241,0.1); border-radius: 10px; margin-bottom: 15px;
+    font-weight: 700; font-size: 0.9rem;
+}
+.file-info i { color: var(--secondary); font-size: 1.2rem; }
+.file-remove {
+    margin-left: auto; background: none; border: none; color: var(--fraud);
+    cursor: pointer; font-size: 1.1rem; padding: 4px;
+}
+
+/* Sample Files */
+.sample-files-section {
+    margin-top: 25px; padding-top: 20px;
+    border-top: 3px dashed var(--card-border);
+}
+.sample-files-section h4 {
+    font-weight: 800; margin-bottom: 12px; text-transform: uppercase;
+    font-size: 0.85rem; display: flex; align-items: center; gap: 8px;
+}
+.sample-files-list { display: flex; flex-direction: column; gap: 8px; }
+.sample-file-link {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    background: var(--card-bg); border: 2px solid var(--card-border);
+    border-radius: 8px; text-decoration: none; color: var(--text-main);
+    font-weight: 700; font-size: 0.85rem; transition: all var(--transition);
+    box-shadow: var(--shadow-active);
+}
+.sample-file-link:hover {
+    transform: translate(-2px,-2px); box-shadow: var(--shadow-small);
+    border-color: var(--secondary);
+}
+.sample-file-link i { color: #22c55e; font-size: 1.2rem; }
+.sample-file-link small { margin-left: auto; color: var(--text-muted); }
+
+/* Results Placeholder */
+.results-placeholder {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+}
+.results-placeholder i { font-size: 3rem; margin-bottom: 15px; display: block; }
+.results-placeholder p { font-weight: 700; font-size: 1rem; }
+
+/* Batch Summary */
+.batch-summary { margin-bottom: 20px; }
+.summary-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-radius: 12px; margin-bottom: 15px;
+    border: var(--border-width) solid var(--card-border); font-size: 0.95rem;
+}
+.summary-header.summary-safe { background: #ecfdf5; }
+.summary-header.summary-fraud { background: #fef2f2; }
+[data-theme='dark'] .summary-header.summary-safe { background: #064e3b; }
+[data-theme='dark'] .summary-header.summary-fraud { background: #450a0a; }
+.summary-customer { display: flex; align-items: center; gap: 10px; }
+.summary-bank { font-weight: 600; color: var(--text-muted); font-size: 0.85rem; }
+.summary-model { font-size: 0.8rem; font-weight: 700; color: var(--secondary); }
+
+.summary-stats {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 15px;
+}
+.stat-box {
+    text-align: center; padding: 14px 10px;
+    border: var(--border-width) solid var(--card-border); border-radius: 10px;
+    background: var(--card-bg); box-shadow: var(--shadow-active);
+}
+.stat-num { font-size: 1.6rem; font-weight: 900; }
+.stat-label { font-size: 0.75rem; font-weight: 700; margin-top: 4px; }
+.stat-safe .stat-num { color: var(--safe); }
+.stat-suspect .stat-num { color: var(--suspicious); }
+.stat-fraud .stat-num { color: var(--fraud); }
+
+.summary-conclusion {
+    padding: 12px 16px; border-radius: 10px; font-weight: 800;
+    text-align: center; font-size: 0.95rem;
+    border: var(--border-width) solid var(--card-border);
+}
+.summary-conclusion.summary-safe { background: #d1fae5; color: #065f46; }
+.summary-conclusion.summary-fraud { background: #fee2e2; color: #991b1b; }
+[data-theme='dark'] .summary-conclusion.summary-safe { background: #064e3b; color: #a7f3d0; }
+[data-theme='dark'] .summary-conclusion.summary-fraud { background: #450a0a; color: #fca5a5; }
+
+/* Batch Table */
+.batch-table-wrap { max-height: 500px; overflow-y: auto; border-radius: 12px; border: var(--border-width) solid var(--card-border); }
+.batch-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.batch-table th {
+    position: sticky; top: 0; background: var(--secondary); color: white;
+    padding: 12px 14px; text-align: left; font-weight: 800;
+    text-transform: uppercase; font-size: 0.75rem; z-index: 2;
+}
+.batch-table td { padding: 10px 14px; border-bottom: 1px solid rgba(0,0,0,0.08); font-weight: 600; }
+.batch-table tr:hover { background: rgba(99,102,241,0.05); }
+.row-fraud { background: #fef2f2 !important; }
+.row-fraud td { color: #991b1b; }
+.row-suspect { background: #fffbeb !important; }
+.row-suspect td { color: #92400e; }
+[data-theme='dark'] .row-fraud { background: #450a0a !important; }
+[data-theme='dark'] .row-fraud td { color: #fca5a5; }
+[data-theme='dark'] .row-suspect { background: #451a03 !important; }
+[data-theme='dark'] .row-suspect td { color: #fcd34d; }
+
+/* Batch History Items */
+.batch-history-list { display: flex; flex-direction: column; gap: 12px; }
+.batch-item {
+    padding: 16px; background: var(--card-bg);
+    border: var(--border-width) solid var(--card-border); border-radius: 12px;
+    box-shadow: var(--shadow-small); cursor: pointer; transition: all var(--transition);
+}
+.batch-item:hover { transform: translate(-2px,-2px); box-shadow: var(--shadow-medium); }
+.batch-has-fraud { border-left: 6px solid var(--fraud); }
+.batch-item-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 0.95rem;
+}
+.batch-item-header .delete-btn {
+    margin-left: auto; background: none; border: none; color: var(--text-muted);
+    cursor: pointer; font-size: 0.9rem; opacity: 0.5; transition: all 0.2s;
+}
+.batch-item:hover .delete-btn { opacity: 1; }
+.batch-item-header .delete-btn:hover { color: var(--fraud); }
+.batch-item-stats {
+    display: flex; gap: 15px; font-size: 0.8rem; font-weight: 700; color: var(--text-muted);
+}
+.batch-date { margin-left: auto; }
+

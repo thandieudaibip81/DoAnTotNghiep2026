@@ -7,7 +7,6 @@ Workflow:
     3. Fit each model on full (resampled) training set
     4. Evaluate on the held-out test set
     5. Save model ``.pkl`` files to ``models/``
-    6. (Optional) log to MLflow if ``MLFLOW_TRACKING_URI`` is set
 """
 
 from __future__ import annotations
@@ -128,44 +127,6 @@ def load_model(model_name: str, sampling: str) -> Any:
 
 
 # ──────────────────────────────────────────────────
-# MLflow logging (optional)
-# ──────────────────────────────────────────────────
-
-
-def _log_to_mlflow(
-    model_name: str,
-    sampling: str,
-    params: Dict[str, Any],
-    metrics: Dict[str, float],
-    model_path: str,
-) -> None:
-    """Log run to MLflow if MLFLOW_TRACKING_URI is set."""
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
-    if not tracking_uri:
-        return
-
-    try:
-        import mlflow
-        import mlflow.sklearn
-
-        mlflow.set_tracking_uri(tracking_uri)
-        mlflow.set_experiment("credit_card_fraud_detection")
-
-        with mlflow.start_run(run_name=f"{model_name}_{sampling}"):
-            mlflow.log_params(params)
-            mlflow.log_metrics(metrics)
-            mlflow.log_artifact(model_path)
-            mlflow.sklearn.log_model(
-                joblib.load(model_path), artifact_path="model",
-            )
-        logger.info("Logged to MLflow: %s_%s", model_name, sampling)
-    except ImportError:
-        logger.warning("mlflow not installed — skipping MLflow logging.")
-    except Exception as exc:
-        logger.error("MLflow logging failed: %s", exc)
-
-
-# ──────────────────────────────────────────────────
 # Orchestrator: full pipeline
 # ──────────────────────────────────────────────────
 
@@ -224,9 +185,6 @@ def train_all(
         # 6. Feature importance (tree-based models only)
         if hasattr(model, "feature_importances_"):
             export_feature_importance(model, X_train.columns.tolist(), name, sampling)
-
-        # 7. MLflow
-        _log_to_mlflow(name, sampling, params, metrics, model_path)
 
         all_results.append(
             {
