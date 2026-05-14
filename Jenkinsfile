@@ -23,7 +23,8 @@ spec:
       args: ['infinity']
   volumes:
     - name: docker-storage
-      emptyDir: {}
+      persistentVolumeClaim:
+        claimName: jenkins-docker-pvc
 '''
         }
     }
