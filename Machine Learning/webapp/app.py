@@ -18,9 +18,8 @@ import sqlite3
 import uuid
 import tempfile
 import io
-
-import psycopg2
-import psycopg2.extras
+import base64
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,8 +27,13 @@ from typing import Any, Dict, List, Optional
 import google.generativeai as genai
 import httpx
 import joblib
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import psycopg2
+import psycopg2.extras
+import shap
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
@@ -202,37 +206,28 @@ def init_db():
                 probability FLOAT,
                 verdict TEXT,
                 batch_id TEXT,
+                model_id TEXT,
                 customer_name TEXT,
                 bank_name TEXT,
                 tx_description TEXT
             )
         """)
-        # Add columns if they don't exist (migration for existing DBs)
-        for col, ctype in [("batch_id", "TEXT"), ("customer_name", "TEXT"), ("bank_name", "TEXT"), ("tx_description", "TEXT")]:
-            try:
-                cur.execute(f"ALTER TABLE fraud_history ADD COLUMN {col} {ctype}")
-            except Exception:
+
+    # Unified migration logic for both DB types
+    needed_cols = [
+        ("batch_id", "TEXT"),
+        ("model_id", "TEXT"),
+        ("customer_name", "TEXT"),
+        ("bank_name", "TEXT"),
+        ("tx_description", "TEXT")
+    ]
+    for col, ctype in needed_cols:
+        try:
+            cur.execute(f"ALTER TABLE fraud_history ADD COLUMN {col} {ctype}")
+        except Exception:
+            if DB_TYPE == "postgresql":
                 conn.rollback()
-                conn = get_db()
                 cur = conn.cursor()
-    else:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS fraud_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                model_used TEXT,
-                time_val FLOAT,
-                amount FLOAT,
-                v_features TEXT,
-                prediction INTEGER,
-                probability FLOAT,
-                verdict TEXT,
-                batch_id TEXT,
-                customer_name TEXT,
-                bank_name TEXT,
-                tx_description TEXT
-            )
-        """)
 
     conn.commit()
     cur.close()
@@ -354,8 +349,7 @@ def get_history_context() -> str:
 
         return ctx
     except Exception as e:
-        return f"DB context không khả dụng: {e}"
-
+        return {"success": False, "error": str(e)}
 
 # ──────────────────────────────────────────────────
 # Pydantic Models
@@ -402,11 +396,245 @@ class BatchChatMessage(BaseModel):
     provider: str = "gemini"
 
 
+class ExplainRawRequest(BaseModel):
+    """Accept raw feature values (no Transaction wrapper) for batch SHAP."""
+    Time: float
+    V1: float
+    V2: float
+    V3: float
+    V4: float
+    V5: float
+    V6: float
+    V7: float
+    V8: float
+    V9: float
+    V10: float
+    V11: float
+    V12: float
+    V13: float
+    V14: float
+    V15: float
+    V16: float
+    V17: float
+    V18: float
+    V19: float
+    V20: float
+    V21: float
+    V22: float
+    V23: float
+    V24: float
+    V25: float
+    V26: float
+    V27: float
+    V28: float
+    Amount: float
+    model_id: str = "random_forest_smote"
+
+
+class AnalyzeSHAPRequest(BaseModel):
+    """Request AI to explain a SHAP chart in natural language."""
+    top_features: list
+    verdict: str
+    probability: float
+    amount: float
+    model_used: str = ""
+    provider: str = "gemini"
+
+
 # ──────────────────────────────────────────────────
 # FastAPI App
 # ──────────────────────────────────────────────────
 
 app = FastAPI(title="Fraud Guard Pro", version="2.0")
+
+matplotlib.use('Agg')
+
+@app.post("/explain/")
+async def explain_transaction(request: PredictRequest):
+    """
+    Tạo biểu đồ SHAP giải thích nguyên nhân dự đoán của mô hình.
+    """
+    try:
+        # Note: assuming PredictRequest provides model_id, and transaction attributes
+        model_name = request.model_id
+        model = get_model(model_name)
+        
+        tx = request.transaction
+        features_dict = {"Time": tx.Time}
+        for i in range(1, 29):
+            features_dict[f"V{i}"] = getattr(tx, f"V{i}")
+        features_dict["Amount"] = tx.Amount
+
+        df_input = pd.DataFrame([features_dict])
+        cols = ["Time"] + [f"V{i}" for i in range(1, 29)] + ["Amount"]
+        df_input = df_input[cols]
+
+        if SCALER:
+            df_input[["Amount", "Time"]] = SCALER.transform(df_input[["Amount", "Time"]])
+
+        # Khởi tạo Explainer tùy theo mô hình
+        if "random_forest" in model_name:
+            explainer = shap.TreeExplainer(model)
+            shap_values = explainer(df_input)
+            
+            if len(shap_values.shape) == 3:
+                explanation = shap_values[0, :, 1]
+            else:
+                explanation = shap_values[0]
+        else:
+            background = pd.DataFrame(np.zeros((1, 30)), columns=cols)
+            if hasattr(model, "predict_proba"):
+                explainer = shap.Explainer(model.predict_proba, background)
+                shap_values = explainer(df_input)
+                explanation = shap_values[0, :, 1]
+            else:
+                explainer = shap.Explainer(model.predict, background)
+                shap_values = explainer(df_input)
+                explanation = shap_values[0]
+
+        explanation.feature_names = cols
+
+        # Extract top features for AI interpretation
+        vals = explanation.values
+        abs_vals = np.abs(vals)
+        top_indices = np.argsort(abs_vals)[::-1][:5]
+        top_features = []
+        for idx in top_indices:
+            top_features.append({
+                "feature": cols[idx],
+                "shap_value": round(float(vals[idx]), 4),
+                "direction": "tăng rủi ro" if vals[idx] > 0 else "giảm rủi ro",
+            })
+
+        plt.rcParams.update({'font.size': 11, 'font.family': 'sans-serif'})
+        fig = plt.figure(figsize=(7, 4.5))
+        shap.plots.waterfall(explanation, show=False, max_display=10)
+        
+        ax = plt.gca()
+        ax.set_title("Biểu đồ Phân Tích (SHAP)", fontsize=16, pad=15)
+        fig.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', dpi=120)
+        plt.close(fig)
+        
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        
+        return {
+            "success": True,
+            "image_base64": f"data:image/png;base64,{img_base64}",
+            "top_features": top_features,
+        }
+    except Exception as e:
+        logger.exception("Error in /explain/")
+        return {"success": False, "error": str(e)}
+
+
+def _compute_shap(model, model_name, df_input, cols):
+    """Shared SHAP computation logic."""
+    if "random_forest" in model_name:
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer(df_input)
+        if len(shap_values.shape) == 3:
+            explanation = shap_values[0, :, 1]
+        else:
+            explanation = shap_values[0]
+    else:
+        background = pd.DataFrame(np.zeros((1, 30)), columns=cols)
+        if hasattr(model, "predict_proba"):
+            explainer = shap.Explainer(model.predict_proba, background)
+            shap_values = explainer(df_input)
+            explanation = shap_values[0, :, 1]
+        else:
+            explainer = shap.Explainer(model.predict, background)
+            shap_values = explainer(df_input)
+            explanation = shap_values[0]
+    explanation.feature_names = cols
+    return explanation
+
+
+@app.post("/explain-raw/")
+async def explain_raw(request: ExplainRawRequest):
+    """SHAP giải thích cho từng giao dịch trong batch (nhận raw features)."""
+    try:
+        model_name = request.model_id
+        model = get_model(model_name)
+
+        cols = ["Time"] + [f"V{i}" for i in range(1, 29)] + ["Amount"]
+        features_dict = {"Time": request.Time}
+        for i in range(1, 29):
+            features_dict[f"V{i}"] = getattr(request, f"V{i}")
+        features_dict["Amount"] = request.Amount
+
+        df_input = pd.DataFrame([features_dict])[cols]
+        if SCALER:
+            df_input[["Amount", "Time"]] = SCALER.transform(df_input[["Amount", "Time"]])
+
+        explanation = _compute_shap(model, model_name, df_input, cols)
+
+        # Top features
+        vals = explanation.values
+        abs_vals = np.abs(vals)
+        top_indices = np.argsort(abs_vals)[::-1][:5]
+        top_features = []
+        for idx in top_indices:
+            top_features.append({
+                "feature": cols[idx],
+                "shap_value": round(float(vals[idx]), 4),
+                "direction": "tăng rủi ro" if vals[idx] > 0 else "giảm rủi ro",
+            })
+
+        # Plot
+        plt.rcParams.update({'font.size': 11, 'font.family': 'sans-serif'})
+        fig = plt.figure(figsize=(7, 4.5))
+        shap.plots.waterfall(explanation, show=False, max_display=10)
+        ax = plt.gca()
+        ax.set_title("Biểu đồ Phân Tích (SHAP)", fontsize=16, pad=15)
+        fig.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', dpi=120)
+        plt.close(fig)
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+
+        return {
+            "success": True,
+            "image_base64": f"data:image/png;base64,{img_base64}",
+            "top_features": top_features,
+        }
+    except Exception as e:
+        logger.exception("Error in /explain-raw/")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/analyze-shap/")
+async def analyze_shap(req: AnalyzeSHAPRequest):
+    """AI đọc và giải thích biểu đồ SHAP bằng ngôn ngữ tự nhiên."""
+    features_text = "\n".join(
+        f"  - {f['feature']}: SHAP = {f['shap_value']:+.4f} ({f['direction']})"
+        for f in req.top_features
+    )
+    prompt = f"""GIẢI THÍCH BIỂU ĐỒ SHAP CHO NGƯỜI DÙNG
+    ─────────────────────────────────
+    KẾT LUẬN MÔ HÌNH: {req.verdict} (Xác suất: {req.probability * 100:.1f}%)
+    SỐ TIỀN GIAO DỊCH: {req.amount}
+    MÔ HÌNH: {req.model_used}
+
+    TOP 5 YẾU TỐ ẢNH HƯỞNG NHẤT (từ biểu đồ SHAP):
+{features_text}
+
+    YÊU CẦU:
+    Hãy giải thích biểu đồ SHAP ở trên cho người dùng KHÔNG chuyên bằng tiếng Việt, ngắn gọn (4-6 câu).
+    - Giải thích ý nghĩa: "SHAP dương (đỏ) = đẩy xác suất gian lận lên, SHAP âm (xanh) = kéo xuống".
+    - Chỉ ra yếu tố nào đáng chú ý nhất và tại sao nó làm giao dịch bị/không bị coi là gian lận.
+    - Kết luận 1 câu: giao dịch này có đáng lo hay không.
+    KHÔNG dùng gạch đầu dòng, chỉ viết đoạn văn liền mạch.
+    """
+
+    response = await call_ai(prompt, SYSTEM_PROMPT_ANALYZE, req.provider)
+    return {"analysis": response}
+
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
@@ -485,9 +713,9 @@ def predict(req: PredictRequest):
             p = _ph()
             cur.execute(
                 f"""INSERT INTO fraud_history
-                   (model_used, time_val, amount, v_features, prediction, probability, verdict)
-                   VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})""",
-                (MODEL_REGISTRY[model_id]["display_name"], tx.Time, tx.Amount,
+                   (model_used, model_id, time_val, amount, v_features, prediction, probability, verdict)
+                   VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})""",
+                (MODEL_REGISTRY[model_id]["display_name"], model_id, tx.Time, tx.Amount,
                  v_json, prediction, confidence, verdict),
             )
             conn.commit()
@@ -891,10 +1119,10 @@ async def batch_predict(
         for r in results:
             cur.execute(
                 f"""INSERT INTO fraud_history
-                   (model_used, time_val, amount, v_features, prediction, probability, verdict,
+                   (model_used, model_id, time_val, amount, v_features, prediction, probability, verdict,
                     batch_id, customer_name, bank_name, tx_description)
-                   VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
-                (model_display, r["time_val"], r["amount"], json.dumps(r["v_features"]),
+                   VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+                (model_display, model_id, r["time_val"], r["amount"], json.dumps(r["v_features"]),
                  r["prediction"], r["probability"], r["verdict"],
                  batch_id, customer_name, bank_name, r["description"]),
             )
@@ -973,7 +1201,7 @@ def get_batch_detail(batch_id: str):
         p = _ph()
         cur.execute(
             f"""SELECT id, timestamp, amount, verdict, probability, model_used,
-                       tx_description, customer_name, bank_name
+                       tx_description, customer_name, bank_name, time_val, v_features, model_id
                 FROM fraud_history WHERE batch_id = {p}
                 ORDER BY id ASC""",
             (batch_id,),
@@ -987,11 +1215,18 @@ def get_batch_detail(batch_id: str):
 
         result = []
         for r in rows:
+            v_features = {}
+            if r[10]:
+                try:
+                    v_features = json.loads(r[10]) if isinstance(r[10], str) else r[10]
+                except Exception:
+                    pass
             result.append({
                 "id": r[0], "timestamp": str(r[1]), "amount": r[2],
                 "verdict": r[3], "probability": r[4], "model_used": r[5],
                 "description": r[6] or "", "customer_name": r[7] or "",
-                "bank_name": r[8] or "",
+                "bank_name": r[8] or "", "time_val": r[9] or 0,
+                "v_features": v_features, "model_id": r[11] or "random_forest_smote",
             })
         return result
     except HTTPException:

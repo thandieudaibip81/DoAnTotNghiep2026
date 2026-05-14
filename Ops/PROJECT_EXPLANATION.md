@@ -73,6 +73,12 @@ python:3.11-slim
     ├── EXPOSE 8000
     ├── HEALTHCHECK: GET /models/        ← K8s readiness probe dùng endpoint này
     └── CMD: uvicorn app:app --host 0.0.0.0 --port 8000
+
+**API Endpoints được triển khai:**
+- Inference: `/predict/`
+- AI Insight: `/ai-analysis/`, `/analyze-shap/`
+- Explainability: `/explain-raw/`
+- Data Service: `/history/`, `/batch-history/`
 ```
 
 **Điểm quan trọng:**

@@ -9,8 +9,8 @@
 Dự án xây dựng hệ thống **phát hiện gian lận thẻ tín dụng** (Credit Card Fraud Detection) hoàn chỉnh, bao gồm:
 
 1. **Pipeline Machine Learning:** 4 mô hình ML, so sánh 3 chiến lược xử lý dữ liệu mất cân bằng, tối ưu siêu tham số bằng Optuna.
-2. **Ứng dụng Web (Webapp):** Giao diện Neo-Brutalism UI cho phép dự đoán gian lận và tích hợp AI phân tích.
-3. **Cơ sở dữ liệu:** PostgreSQL lưu trữ lịch sử giao dịch với tính năng JSONB mạnh mẽ.
+2. **Ứng dụng Web (Webapp):** Giao diện Neo-Brutalism UI cho phép dự đoán gian lận, tích hợp AI phân tích và giải thích mô hình bằng SHAP (Explainable AI).
+3. **Cơ sở dữ liệu:** PostgreSQL lưu trữ lịch sử giao dịch với tính năng JSONB và theo dõi định danh mô hình (model_id).
 4. **Hạ tầng DevOps:** CI/CD với Jenkins, Kubernetes Cluster, ELK Stack (Logging) và Prometheus/Grafana (Monitoring).
 
 **Bài toán cốt lõi:** Dataset gồm 284.807 giao dịch, trong đó chỉ **492 giao dịch gian lận (0,173%)**. Đây là bài toán **phân loại nhị phân với dữ liệu cực kỳ mất cân bằng** — nếu model luôn dự đoán "Legit" thì accuracy đã đạt 99,83%, nhưng bỏ sót toàn bộ fraud.
@@ -159,6 +159,8 @@ Browser (Frontend)           FastAPI (Backend)            PostgreSQL
 | `/models/` | GET | Danh sách 4 model |
 | `/predict/` | POST | Dự đoán fraud/legit, lưu DB |
 | `/ai-analysis/` | POST | AI phân tích (Gemini/Groq) |
+| `/explain-raw/` | POST | Giải thích toán học SHAP cho dữ liệu thô |
+| `/analyze-shap/` | POST | AI kết hợp đọc biểu đồ SHAP để giải thích |
 | `/history/` | GET | Lịch sử giao dịch |
 
 ### 4 Model Production (SMOTE + Tuned)
@@ -175,7 +177,8 @@ Browser (Frontend)           FastAPI (Backend)            PostgreSQL
 1. **Phân tách Chế độ Demo và Nghiệp vụ:** Hỗ trợ nhập giao dịch thủ công (Demo) và xử lý dữ liệu lớn qua file Excel/CSV (Nghiệp vụ).
 2. **Cách ly Dữ liệu Lô:** Sử dụng `batch_id` trong PostgreSQL để tách biệt lịch sử giao dịch Demo và lịch sử của từng lô upload.
 3. **AI Dual-Provider Độc Lập:** Hỗ trợ Google Gemini và Groq (Llama-3). Người dùng có thể thiết lập mô hình AI riêng biệt cho Chatbot và Phân tích tổng quan mà không lo xung đột.
-4. **Neo-Brutalism UI:** Giao diện hiện đại, tốc độ phản hồi nhanh, tự động đánh số thứ tự Lô (Lô #1, Lô #2) khoa học.
+4. **Giải thích Mô hình (SHAP AI):** Tích hợp biểu đồ Waterfall SHAP giúp minh bạch hóa các quyết định của AI, cho phép người dùng hiểu rõ tại sao một giao dịch bị đánh dấu là gian lận.
+5. **Neo-Brutalism UI:** Giao diện hiện đại, tối ưu hóa hiển thị biểu đồ SHAP cạnh phần giải thích AI (Side-by-Side).
 
 ### AI Dual Provider
 
@@ -193,6 +196,7 @@ Browser (Frontend)           FastAPI (Backend)            PostgreSQL
 | `model_used` | VARCHAR | Model đã dùng |
 | `amount` | FLOAT | Số tiền |
 | `v_features` | JSONB | V1-V28 |
+| `model_id` | VARCHAR | ID nội bộ của mô hình (VD: random_forest_smote) |
 | `verdict` | VARCHAR | An toàn / Nghi ngờ / Gian lận |
 | `probability` | FLOAT | Xác suất fraud |
 

@@ -216,6 +216,10 @@ predictionForm.addEventListener('submit', async (e) => {
     document.getElementById('aiActionBar').classList.add('hidden');
     document.getElementById('aiActionBar').style.display = 'none';
     document.getElementById('modelUsedLabel').classList.add('hidden');
+    
+    document.getElementById('shapResultContainer').classList.add('hidden');
+    document.getElementById('shapImage').classList.add('hidden');
+    document.getElementById('shapImage').src = '';
 
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang phân tích...';
@@ -340,7 +344,53 @@ async function fetchAIAnalysis(data) {
         txt.innerText = 'Không thể kết nối AI. Thử chuyển sang provider khác.';
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-robot"></i> Phân tích bằng AI';
+        btn.innerHTML = '<i class="fas fa-magic"></i> Phân tích bằng AI';
+    }
+}
+
+async function triggerSHAPAnalysis() {
+    if (!activeContext) return;
+    const btn = document.getElementById('shapAnalyzeBtn');
+    const container = document.getElementById('shapResultContainer');
+    const spinner = document.getElementById('shapSpinner');
+    const img = document.getElementById('shapImage');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang vẽ biểu đồ...';
+    container.classList.remove('hidden');
+    img.classList.add('hidden');
+    spinner.style.display = 'block';
+
+    try {
+        const modelId = document.getElementById('modelSelector').value;
+        const txData = {};
+        for (let k in activeContext) {
+            if (["Time", "Amount"].includes(k) || k.startsWith("V")) {
+                txData[k] = activeContext[k];
+            }
+        }
+
+        const res = await fetch('/explain/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transaction: txData, model_id: modelId }),
+        });
+
+        if (!res.ok) throw new Error('Không thể tạo biểu đồ SHAP');
+        const data = await res.json();
+        
+        if (data.success) {
+            img.src = data.image_base64;
+            img.classList.remove('hidden');
+        } else {
+            alert('Lỗi: ' + data.error);
+        }
+    } catch (e) {
+        alert('Lỗi kết nối khi gọi /explain/');
+    } finally {
+        spinner.style.display = 'none';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-chart-bar"></i> Xem Biểu Đồ Giải Thích Toán Học';
     }
 }
 
@@ -696,9 +746,14 @@ async function runBatchPredict() {
     }
 }
 
+let lastBatchResults = null;  // Store batch results globally for SHAP
+let lastBatchModelId = 'random_forest_smote';
+
 function renderBatchResults(data) {
     document.getElementById('batchResultsPlaceholder').classList.add('hidden');
     document.getElementById('batchResults').classList.remove('hidden');
+    lastBatchResults = data;
+    lastBatchModelId = document.getElementById('batchModelSelector').value || 'random_forest_smote';
 
     const hasFraud = data.fraud > 0;
     const summaryClass = hasFraud ? 'summary-fraud' : 'summary-safe';
@@ -723,7 +778,7 @@ function renderBatchResults(data) {
         <div class="summary-conclusion ${summaryClass}">${conclusion}</div>`;
 
     const tbody = document.getElementById('batchTableBody');
-    tbody.innerHTML = data.results.map(r => {
+    tbody.innerHTML = data.results.map((r, idx) => {
         const cls = r.verdict === 'Gian lận' ? 'row-fraud' : (r.verdict === 'Nghi ngờ' ? 'row-suspect' : '');
         const icon = r.verdict === 'Gian lận' ? '🔴' : (r.verdict === 'Nghi ngờ' ? '⚠️' : '🟢');
         const confLabel = `${r.verdict} ${(r.probability*100).toFixed(1)}%`;
@@ -732,7 +787,9 @@ function renderBatchResults(data) {
             <td>${r.row}</td><td>${r.date}</td><td>${r.time || ''}</td><td>${r.description}</td>
             <td>${amtDisplay}</td>
             <td><strong>${icon} ${r.verdict}</strong></td>
-            <td>${confLabel}</td></tr>`;
+            <td>${confLabel}</td>
+            <td><button class="shap-explain-btn" onclick="openShapModal('batch', ${idx})">🔍 Giải thích</button></td>
+        </tr>`;
     }).join('');
 }
 
@@ -824,8 +881,14 @@ async function viewBatchDetail(batchId) {
             const cls = r.verdict === 'Gian lận' ? 'row-fraud' : (r.verdict === 'Nghi ngờ' ? 'row-suspect' : '');
             const icon = r.verdict === 'Gian lận' ? '🔴' : (r.verdict === 'Nghi ngờ' ? '⚠️' : '🟢');
             return `<tr class="${cls}"><td>${i+1}</td><td>${r.description}</td><td>$${r.amount}</td>
-                <td>${icon} ${r.verdict}</td><td>${(r.probability*100).toFixed(1)}%</td></tr>`;
+                <td>${icon} ${r.verdict}</td><td>${(r.probability*100).toFixed(1)}%</td>
+                <td><button class="shap-explain-btn" onclick="openShapModal('detail', ${i}, '${batchId}')">🔍 Giải thích</button></td></tr>`;
         }).join('');
+        
+        // Store detail data globally
+        window._batchDetailData = data;
+        window._batchDetailBatchId = batchId;
+        
         panel.scrollIntoView({ behavior: 'smooth' });
     } catch (e) { console.error('Batch detail error:', e); }
 }
@@ -990,5 +1053,132 @@ async function triggerBatchAIAnalysis() {
     } catch (e) {
         content.innerHTML = `<p style="color:#ef4444; text-align:center;">Lỗi hệ thống: ${e.message}. Vui lòng thử API khác.</p>`;
         console.error(e);
+    }
+}
+
+// ══════════════════════════════════════════════════
+// SHAP EXPLANATION MODAL
+// ══════════════════════════════════════════════════
+
+let shapModalProvider = 'gemini';
+let shapModalTxData = null;  // Store current tx data for re-analysis
+
+function setShapModalProvider(provider, btn) {
+    shapModalProvider = provider;
+    document.querySelectorAll('#shapModalAiToggle .provider-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    // Re-run AI analysis if we have data
+    if (shapModalTxData) {
+        runShapAIAnalysis(shapModalTxData);
+    }
+}
+
+function closeShapModal() {
+    document.getElementById('shapModal').classList.add('hidden');
+    shapModalTxData = null;
+}
+
+async function openShapModal(source, index, batchId) {
+    const modal = document.getElementById('shapModal');
+    const spinnerEl = document.getElementById('shapModalSpinner');
+    const imgEl = document.getElementById('shapModalImage');
+    const aiText = document.getElementById('shapModalAiText');
+
+    // Reset state
+    modal.classList.remove('hidden');
+    spinnerEl.style.display = 'flex';
+    imgEl.classList.add('hidden');
+    imgEl.src = '';
+    aiText.innerHTML = '<p style="color: var(--text-muted);">Đang chờ biểu đồ SHAP...</p>';
+
+    // Get transaction data
+    let txRow = null;
+    let modelId = 'random_forest_smote'; // default fallback
+
+    if (source === 'batch' && lastBatchResults) {
+        txRow = lastBatchResults.results[index];
+        modelId = lastBatchModelId; // This is set in renderBatchResults
+    } else if (source === 'detail' && window._batchDetailData) {
+        txRow = window._batchDetailData[index];
+        modelId = txRow.model_id || 'random_forest_smote';
+    }
+
+    if (!txRow) {
+        aiText.innerHTML = '<p style="color:#ef4444;">Không tìm thấy dữ liệu giao dịch.</p>';
+        spinnerEl.style.display = 'none';
+        return;
+    }
+
+    // Build raw features payload
+    const payload = {
+        Time: txRow.time_val,
+        Amount: txRow.amount,
+        model_id: modelId,
+    };
+    // V features
+    const vf = txRow.v_features || {};
+    for (let i = 1; i <= 28; i++) {
+        payload[`V${i}`] = vf[`V${i}`] || 0;
+    }
+
+    try {
+        // 1. Get SHAP chart
+        const res = await fetch('/explain-raw/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+
+        spinnerEl.style.display = 'none';
+
+        if (!data.success) {
+            aiText.innerHTML = `<p style="color:#ef4444;">Lỗi SHAP: ${data.error}</p>`;
+            return;
+        }
+
+        // Show chart
+        imgEl.src = data.image_base64;
+        imgEl.classList.remove('hidden');
+
+        // Store for re-analysis with different provider
+        shapModalTxData = {
+            top_features: data.top_features,
+            verdict: txRow.verdict,
+            probability: txRow.probability,
+            amount: txRow.amount,
+            model_used: lastBatchResults ? lastBatchResults.model_used : '',
+        };
+
+        // 2. Auto-trigger AI analysis
+        runShapAIAnalysis(shapModalTxData);
+
+    } catch (e) {
+        spinnerEl.style.display = 'none';
+        aiText.innerHTML = `<p style="color:#ef4444;">Lỗi kết nối: ${e.message}</p>`;
+    }
+}
+
+async function runShapAIAnalysis(txData) {
+    const aiText = document.getElementById('shapModalAiText');
+    aiText.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:10px auto;"></div><p style="text-align:center;color:var(--text-muted);">AI đang đọc biểu đồ...</p>';
+
+    try {
+        const res = await fetch('/analyze-shap/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                top_features: txData.top_features,
+                verdict: txData.verdict,
+                probability: txData.probability,
+                amount: txData.amount,
+                model_used: txData.model_used,
+                provider: shapModalProvider,
+            }),
+        });
+        const data = await res.json();
+        aiText.innerText = data.analysis;
+    } catch (e) {
+        aiText.innerHTML = `<p style="color:#ef4444;">Không thể kết nối AI. Hãy thử đổi provider.</p>`;
     }
 }
