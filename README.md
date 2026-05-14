@@ -170,6 +170,13 @@ Browser (Frontend)           FastAPI (Backend)            PostgreSQL
 | `knn_smote` | KNN | 0.9964 |
 | `svm_smote` | SVM | 0.9988 |
 
+### Các tính năng nổi bật của Webapp
+
+1. **Phân tách Chế độ Demo và Nghiệp vụ:** Hỗ trợ nhập giao dịch thủ công (Demo) và xử lý dữ liệu lớn qua file Excel/CSV (Nghiệp vụ).
+2. **Cách ly Dữ liệu Lô:** Sử dụng `batch_id` trong PostgreSQL để tách biệt lịch sử giao dịch Demo và lịch sử của từng lô upload.
+3. **AI Dual-Provider Độc Lập:** Hỗ trợ Google Gemini và Groq (Llama-3). Người dùng có thể thiết lập mô hình AI riêng biệt cho Chatbot và Phân tích tổng quan mà không lo xung đột.
+4. **Neo-Brutalism UI:** Giao diện hiện đại, tốc độ phản hồi nhanh, tự động đánh số thứ tự Lô (Lô #1, Lô #2) khoa học.
+
 ### AI Dual Provider
 
 | Provider | Model | Ưu điểm |
