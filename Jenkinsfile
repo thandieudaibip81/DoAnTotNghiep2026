@@ -24,6 +24,8 @@ spec:
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
+        - name: DOCKER_DRIVER
+          value: "overlay2"
       volumeMounts:
         - name: docker-storage
           mountPath: /var/lib/docker
@@ -33,8 +35,9 @@ spec:
       args: ['infinity']
   volumes:
     - name: docker-storage
-      persistentVolumeClaim:
-        claimName: jenkins-docker-pvc
+      hostPath:
+        path: /var/lib/jenkins-dind-storage
+        type: DirectoryOrCreate
 '''
         }
     }
