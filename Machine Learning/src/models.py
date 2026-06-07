@@ -21,9 +21,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
 
 from src.config import MODEL_NAMES, RANDOM_STATE
-from src.keras_nn import KerasNN
 
 logger = logging.getLogger(__name__)
 
@@ -59,24 +59,25 @@ _DEFAULTS: Dict[str, Dict[str, Any]] = {
         "random_state": RANDOM_STATE,
     },
     "neural_network": {
-        "layers": [30, 20, 10, 5],
-        "dropout": 0.2,
-        "learning_rate": 0.001,
-        "epochs": 35,
-        "batch_size": 250,
+        "hidden_layer_sizes": (30, 20, 10, 5),
         "activation": "relu",
+        "solver": "adam",
+        "alpha": 0.0001,
+        "batch_size": 250,
+        "learning_rate_init": 0.001,
+        "max_iter": 35,
         "random_state": RANDOM_STATE,
-        "verbose": 0,
+        "early_stopping": True,
+        "validation_fraction": 0.2,
     },
 }
 
-# Map canonical name → sklearn / Keras class
 _REGISTRY: Dict[str, type] = {
     "random_forest": RandomForestClassifier,
     "logistic_regression": LogisticRegression,
     "knn": KNeighborsClassifier,
     "svm": SVC,
-    "neural_network": KerasNN,
+    "neural_network": MLPClassifier,
 }
 
 
@@ -146,6 +147,6 @@ def get_model_display_name(name: str) -> str:
         "logistic_regression": "Logistic Regression",
         "knn": "K-Nearest Neighbors",
         "svm": "Support Vector Machine",
-        "neural_network": "Neural Network (Keras)",
+        "neural_network": "Neural Network (MLP)",
     }
     return _DISPLAY.get(name, name)

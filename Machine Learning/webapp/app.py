@@ -98,6 +98,10 @@ WEBAPP_MODELS = {
         "display_name": "SVM",
         "description": "Kernel RBF, C=28.48, tuned bởi Optuna (F1=0.9988)",
     },
+    "neural_network_smote": {
+        "display_name": "Neural Network (MLP)",
+        "description": "Mạng nơ-ron truyền thẳng (MLPClassifier) 4 tầng, tuned bởi Optuna",
+    },
 }
 
 
