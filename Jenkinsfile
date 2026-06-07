@@ -24,8 +24,6 @@ spec:
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
-        - name: DOCKER_DRIVER
-          value: "overlay2"
       volumeMounts:
         - name: docker-storage
           mountPath: /var/lib/docker
