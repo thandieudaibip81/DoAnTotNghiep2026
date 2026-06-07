@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import sqlite3
 import uuid
 import tempfile
@@ -23,6 +24,12 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Ensure 'src' package is importable for joblib deserialization of KerasNN
+# (neural_network_smote.pkl references src.keras_nn.KerasNN)
+_ML_ROOT = Path(__file__).resolve().parent.parent  # Machine Learning/
+if str(_ML_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ML_ROOT))
 
 import google.generativeai as genai
 import httpx
@@ -94,6 +101,10 @@ WEBAPP_MODELS = {
     "svm_smote": {
         "display_name": "SVM",
         "description": "Kernel RBF, C=28.48, tuned bởi Optuna (F1=0.9988)",
+    },
+    "neural_network_smote": {
+        "display_name": "Neural Network (Keras)",
+        "description": "Mạng nơ-ron truyền thẳng 4 tầng với Dropout, tuned bởi Optuna (TensorFlow)",
     },
 }
 

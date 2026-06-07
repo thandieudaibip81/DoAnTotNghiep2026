@@ -20,3 +20,6 @@ psycopg2-binary>=2.9
 # Notebook support
 jupyter>=1.0
 ipykernel>=6.0
+
+# Deep Learning
+tensorflow>=2.15

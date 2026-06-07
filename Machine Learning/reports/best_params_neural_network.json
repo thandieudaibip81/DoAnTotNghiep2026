@@ -1,0 +1,16 @@
+{
+  "model": "neural_network",
+  "best_f1": 0.9993995098841323,
+  "params": {
+    "n_layers": 4,
+    "layer_0_units": 48,
+    "layer_1_units": 24,
+    "layer_2_units": 48,
+    "layer_3_units": 16,
+    "dropout": 0.11967800821618821,
+    "lr": 0.0018919518068619323,
+    "epochs": 33,
+    "batch_size": 512,
+    "activation": "relu"
+  }
+}

@@ -39,6 +39,7 @@ from src.preprocessing import (
     load_data,
     scale_features,
     split_data,
+    subsample_for_tuning,
 )
 from src.trainer import train_all, train_model, save_model, _load_best_params, load_model
 from src.tuner import tune_all
@@ -61,6 +62,7 @@ _SHORTCUTS = {
     "lr": "logistic_regression",
     "knn": "knn",
     "svm": "svm",
+    "nn": "neural_network",
 }
 
 
@@ -83,24 +85,47 @@ def _resolve_model_names(raw: str) -> list[str]:
 
 
 def step_baseline() -> None:
-    """Train all four models on raw (imbalanced) data to show bias."""
+    """Train all models on raw (imbalanced) data to demonstrate imbalance bias.
+    
+    NOTE: Baseline models are evaluated and their metrics are printed for
+    comparison, but they are NOT saved to models/ (only SMOTE models are
+    persisted for production use).
+    
+    SVM/KNN are sub-sampled (10%) and Neural Network (20%) during baseline
+    to prevent hanging on the full dataset due to O(n²-n³) complexity.
+    """
     import pandas as pd
     from src.evaluator import evaluate_model, export_metrics_csv
 
     logger.info("=" * 60)
-    logger.info("BASELINE: All models on RAW imbalanced data")
+    logger.info("BASELINE: All models on RAW imbalanced data (no save)")
     logger.info("=" * 60)
 
     df = load_data()
     df = scale_features(df, fit=True)
     X_train, X_test, y_train, y_test = split_data(df)
 
+    # Models that are too slow for full baseline data
+    SLOW_MODELS_10 = {"svm", "knn"}       # O(n²-n³) → use 10%
+    SLOW_MODELS_20 = {"neural_network"}   # iterative → use 20%
+
     all_results = []
-    # Train without any resampling
+    # Train without any resampling — metrics only, no .pkl saved
     for name in MODEL_NAMES:
-        model = train_model(name, X_train, y_train, params={})
+        # Sub-sample for slow models to prevent hanging
+        if name in SLOW_MODELS_10:
+            X_train_bl, y_train_bl = subsample_for_tuning(X_train, y_train, fraction=0.10)
+            logger.info("Baseline sub-sampling '%s' → %d rows (10%%)", name, len(X_train_bl))
+        elif name in SLOW_MODELS_20:
+            X_train_bl, y_train_bl = subsample_for_tuning(X_train, y_train, fraction=0.20)
+            logger.info("Baseline sub-sampling '%s' → %d rows (20%%)", name, len(X_train_bl))
+        else:
+            X_train_bl, y_train_bl = X_train, y_train
+
+        model = train_model(name, X_train_bl, y_train_bl, params={})
         metrics = evaluate_model(model, X_test, y_test, name, "baseline")
-        save_model(model, name, "baseline")
+        # Baseline models are NOT saved (only SMOTE models are persisted)
+        logger.info("Baseline '%s' evaluated — skipping .pkl save", name)
 
         all_results.append({
             "model": get_model_display_name(name),
@@ -184,8 +209,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--models",
-        default=",".join(["rf", "lr", "knn", "svm"]),
-        help="Comma-separated model names/shortcuts (rf, lr, knn, svm).",
+        default=",".join(["rf", "lr", "knn", "svm", "nn"]),
+        help="Comma-separated model names/shortcuts (rf, lr, knn, svm, nn).",
     )
 
     args = parser.parse_args()

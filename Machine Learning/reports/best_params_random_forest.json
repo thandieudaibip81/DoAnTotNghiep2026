@@ -1,10 +1,10 @@
 {
   "model": "random_forest",
-  "best_f1": 0.9998879013392996,
+  "best_f1": 0.9998857033197439,
   "params": {
-    "n_estimators": 200,
+    "n_estimators": 150,
     "max_depth": 30,
-    "min_samples_split": 5,
+    "min_samples_split": 4,
     "class_weight": "balanced"
   }
 }

@@ -45,13 +45,33 @@ logger = logging.getLogger(__name__)
 
 
 def _load_best_params(model_name: str) -> Dict[str, Any]:
-    """Try to load Optuna best params JSON; return empty dict if missing."""
+    """Try to load Optuna best params JSON; return empty dict if missing.
+    
+    For neural_network, converts Optuna's flat param format
+    (n_layers, layer_X_units, lr) into KerasNN constructor format
+    (layers=[...], learning_rate).
+    """
     path = REPORTS_DIR / f"best_params_{model_name}.json"
     if path.exists():
         with open(path) as f:
             data = json.load(f)
         logger.info("Loaded tuned params for '%s' from %s", model_name, path)
-        return data.get("params", {})
+        params = data.get("params", {})
+        
+        # Convert Optuna flat NN params → KerasNN constructor params
+        if model_name == "neural_network" and "n_layers" in params:
+            n_layers = params.pop("n_layers")
+            layers = []
+            for i in range(n_layers):
+                key = f"layer_{i}_units"
+                if key in params:
+                    layers.append(params.pop(key))
+            params["layers"] = layers
+            # Optuna uses 'lr' but KerasNN expects 'learning_rate'
+            if "lr" in params:
+                params["learning_rate"] = params.pop("lr")
+        
+        return params
     logger.warning(
         "No tuned params found for '%s' — using defaults.", model_name,
     )
@@ -106,11 +126,18 @@ def train_model(
 def save_model(model: Any, model_name: str, sampling: str) -> str:
     """Persist a fitted model to ``models/<name>_<sampling>.pkl``.
 
+    Only saves models trained with SMOTE sampling for production use.
+    Baseline and undersample models are NOT persisted.
+
     Returns
     -------
     str
-        Path where the model was saved.
+        Path where the model was saved, or empty string if skipped.
     """
+    if sampling not in ("smote", "SMOTE"):
+        logger.info("Skipping save for '%s' with sampling='%s' (only SMOTE is saved)", model_name, sampling)
+        return ""
+
     filename = f"{model_name}_{sampling}.pkl"
     path = str(MODELS_DIR / filename)
     joblib.dump(model, path)
@@ -143,7 +170,7 @@ def train_all(
     sampling : str
         ``"none"`` | ``"undersample"`` | ``"smote"``.
     model_names : list[str] | None
-        Subset of models; defaults to all four.
+        Subset of models; defaults to all five.
     use_tuned_params : bool
         If True, load tuned params from JSON files.
 
@@ -152,7 +179,12 @@ def train_all(
     pd.DataFrame
         Evaluation metrics for every trained model.
     """
+    from src.preprocessing import subsample_for_tuning
+
     names = model_names or MODEL_NAMES
+
+    # Models with O(n²-n³) complexity that cannot handle full SMOTE data
+    SLOW_MODELS = {"svm", "knn"}  # ~455k rows → sub-sample to 20%
 
     # 1. Preprocess
     logger.info("=" * 60)
@@ -170,19 +202,26 @@ def train_all(
         # 2. Get params
         params = _load_best_params(name) if use_tuned_params else {}
 
-        # 3. Train
-        model = train_model(name, X_train_s, y_train_s, params=params)
+        # 3. Sub-sample for slow models to prevent hanging
+        if name in SLOW_MODELS and sampling == SAMPLING_SMOTE:
+            X_fit, y_fit = subsample_for_tuning(X_train_s, y_train_s, fraction=0.20)
+            logger.info("Sub-sampling '%s' for training → %d rows (20%%)", name, len(X_fit))
+        else:
+            X_fit, y_fit = X_train_s, y_train_s
 
-        # 4. Evaluate
+        # 4. Train
+        model = train_model(name, X_fit, y_fit, params=params)
+
+        # 5. Evaluate
         metrics = evaluate_model(
             model, X_test, y_test,
             model_name=name, sampling=sampling,
         )
 
-        # 5. Save model
+        # 6. Save model
         model_path = save_model(model, name, sampling)
 
-        # 6. Feature importance (tree-based models only)
+        # 7. Feature importance (tree-based models only)
         if hasattr(model, "feature_importances_"):
             export_feature_importance(model, X_train.columns.tolist(), name, sampling)
 
@@ -205,3 +244,4 @@ def train_all(
     print(results_df.to_string(index=False))
 
     return results_df
+

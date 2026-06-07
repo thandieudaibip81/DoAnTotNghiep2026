@@ -16,7 +16,7 @@ from src.config import (
     DATA_FILE,
     MODELS_DIR,
     RANDOM_STATE,
-    SAMPLE_FRACTION,
+    SAMPLE_FRACTION_KNN_SVM,
     SAMPLING_NONE,
     SAMPLING_SMOTE,
     SAMPLING_UNDERSAMPLE,
@@ -209,7 +209,7 @@ def get_sampled_data(
 def subsample_for_tuning(
     X: pd.DataFrame,
     y: pd.Series,
-    fraction: float = SAMPLE_FRACTION,
+    fraction: float = SAMPLE_FRACTION_KNN_SVM,
 ) -> Tuple[pd.DataFrame, pd.Series]:
     """Take a stratified subsample for faster tuning of KNN / SVM.
 

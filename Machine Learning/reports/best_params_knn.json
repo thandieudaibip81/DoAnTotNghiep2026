@@ -1,6 +1,6 @@
 {
   "model": "knn",
-  "best_f1": 0.9964369856024435,
+  "best_f1": 0.997183580242341,
   "params": {
     "n_neighbors": 3,
     "weights": "distance",

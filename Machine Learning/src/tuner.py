@@ -1,8 +1,10 @@
 """
 tuner.py — Hyperparameter optimisation with Optuna.
 
-Each model has its own search space.  KNN and SVM automatically
-sub-sample the training set (via ``SAMPLE_FRACTION``) for speed.
+Each model has its own search space.  Fast models (RF, LR) are tuned
+on the full dataset; slow models (KNN, SVM, Neural Network) are
+sub-sampled during tuning for speed.  The final train step always
+uses 100% SMOTE data, so tuning quality is preserved.
 
 Objective: maximise **F1-Score** using StratifiedKFold cross-validation
 so that Recall is properly rewarded without sacrificing Precision.
@@ -24,7 +26,8 @@ from src.config import (
     MODEL_NAMES,
     RANDOM_STATE,
     REPORTS_DIR,
-    SAMPLE_FRACTION,
+    SAMPLE_FRACTION_KNN_SVM,
+    SAMPLE_FRACTION_NN,
     TUNER_CV_FOLDS,
     TUNER_N_TRIALS,
 )
@@ -65,7 +68,7 @@ def _lr_objective(trial: optuna.Trial, X: np.ndarray, y: np.ndarray) -> float:
 
 
 def _knn_objective(trial: optuna.Trial, X: np.ndarray, y: np.ndarray) -> float:
-    """KNN search space (runs on sub-sampled data)."""
+    """KNN search space."""
     params = {
         "n_neighbors": trial.suggest_int("n_neighbors", 3, 25, step=2),
         "weights": trial.suggest_categorical("weights", ["uniform", "distance"]),
@@ -75,18 +78,33 @@ def _knn_objective(trial: optuna.Trial, X: np.ndarray, y: np.ndarray) -> float:
 
 
 def _svm_objective(trial: optuna.Trial, X: np.ndarray, y: np.ndarray) -> float:
-    """SVM search space (runs on sub-sampled data)."""
-    kernel = trial.suggest_categorical("kernel", ["rbf", "poly"])
+    """SVM search space — rbf kernel only (poly is too slow for large datasets)."""
     params: Dict[str, Any] = {
         "C": trial.suggest_float("C", 0.1, 50.0, log=True),
-        "kernel": kernel,
+        "kernel": "rbf",
+        "gamma": trial.suggest_categorical("gamma", ["scale", "auto"]),
         "class_weight": trial.suggest_categorical("class_weight", ["balanced", None]),
     }
-    if kernel == "rbf":
-        params["gamma"] = trial.suggest_categorical("gamma", ["scale", "auto"])
-    elif kernel == "poly":
-        params["degree"] = trial.suggest_int("degree", 2, 4)
     return _cv_f1(get_model("svm", params), X, y)
+
+
+def _nn_objective(trial: optuna.Trial, X: np.ndarray, y: np.ndarray) -> float:
+    """Neural Network search space."""
+    n_layers = trial.suggest_int("n_layers", 2, 5)
+    layers = []
+    for i in range(n_layers):
+        n_units = trial.suggest_int(f"layer_{i}_units", 8, 64, step=8)
+        layers.append(n_units)
+
+    params = {
+        "layers": layers,
+        "dropout": trial.suggest_float("dropout", 0.1, 0.4),
+        "learning_rate": trial.suggest_float("lr", 1e-4, 1e-2, log=True),
+        "epochs": trial.suggest_int("epochs", 20, 50),
+        "batch_size": trial.suggest_categorical("batch_size", [128, 256, 512]),
+        "activation": trial.suggest_categorical("activation", ["relu", "tanh"]),
+    }
+    return _cv_f1(get_model("neural_network", params), X, y, n_jobs=1)
 
 
 # Dispatcher
@@ -95,25 +113,22 @@ _OBJECTIVES = {
     "logistic_regression": _lr_objective,
     "knn": _knn_objective,
     "svm": _svm_objective,
+    "neural_network": _nn_objective,
 }
-
-# Models that benefit from sub-sampling during tuning
-_SLOW_MODELS = {"knn", "svm"}
-
 
 # ──────────────────────────────────────────────────
 # Cross-validation helper
 # ──────────────────────────────────────────────────
 
 
-def _cv_f1(model: Any, X: np.ndarray, y: np.ndarray) -> float:
+def _cv_f1(model: Any, X: np.ndarray, y: np.ndarray, n_jobs: int = -1) -> float:
     """Return mean F1-Score from stratified k-fold CV."""
     skf = StratifiedKFold(
         n_splits=TUNER_CV_FOLDS,
         shuffle=True,
         random_state=RANDOM_STATE,
     )
-    scores = cross_val_score(model, X, y, cv=skf, scoring="f1", n_jobs=-1)
+    scores = cross_val_score(model, X, y, cv=skf, scoring="f1", n_jobs=n_jobs)
     return float(scores.mean())
 
 
@@ -127,7 +142,6 @@ def tune_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_trials: int = TUNER_N_TRIALS,
-    sample_fraction: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Run Optuna study to find the best hyperparameters for *model_name*.
 
@@ -139,8 +153,6 @@ def tune_model(
         Training features & labels (already resampled if applicable).
     n_trials : int
         Number of Optuna trials.
-    sample_fraction : float | None
-        Override ``SAMPLE_FRACTION`` for slow models.
 
     Returns
     -------
@@ -150,14 +162,20 @@ def tune_model(
     if model_name not in _OBJECTIVES:
         raise ValueError(f"No search space defined for '{model_name}'")
 
-    # Sub-sample for slow models
-    frac = sample_fraction or SAMPLE_FRACTION
-    if model_name in _SLOW_MODELS:
-        logger.info(
-            "Sub-sampling %.0f%% for %s tuning…", frac * 100, model_name,
-        )
+    # --- Selective sub-sampling for slow models ---
+    # Tuning runs on a representative subset; final train always uses 100% SMOTE.
+    # LR with saga solver on 455k rows takes ~3-5 min per trial — subsample helps.
+    SUBSAMPLE_20 = {"knn", "svm"}          # O(n²) / O(n³) complexity
+    SUBSAMPLE_30 = {"logistic_regression", "neural_network"}  # iterative / saga
+
+    if model_name in SUBSAMPLE_20:
+        frac = SAMPLE_FRACTION_KNN_SVM
+        X_tune, y_tune = subsample_for_tuning(X_train, y_train, fraction=frac)
+    elif model_name in SUBSAMPLE_30:
+        frac = SAMPLE_FRACTION_NN
         X_tune, y_tune = subsample_for_tuning(X_train, y_train, fraction=frac)
     else:
+        # Random Forest — fast enough on full data
         X_tune, y_tune = X_train, y_train
 
     objective_fn = _OBJECTIVES[model_name]

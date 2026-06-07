@@ -1,14 +1,15 @@
 """
-models.py — Model factory for the four classifiers.
+models.py — Model factory for the five classifiers.
 
 Provides a clean factory pattern so callers never need to import
-individual sklearn classes directly.
+individual sklearn / Keras classes directly.
 
 Supported models:
-    - random_forest   → RandomForestClassifier
+    - random_forest       → RandomForestClassifier
     - logistic_regression → LogisticRegression
-    - knn             → KNeighborsClassifier
-    - svm             → SVC (with probability=True for ROC/PR curves)
+    - knn                 → KNeighborsClassifier
+    - svm                 → SVC (with probability=True for ROC/PR curves)
+    - neural_network      → KerasNN (TensorFlow/Keras wrapper)
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 
 from src.config import MODEL_NAMES, RANDOM_STATE
+from src.keras_nn import KerasNN
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +39,7 @@ _DEFAULTS: Dict[str, Dict[str, Any]] = {
     },
     "logistic_regression": {
         "C": 1.0,
-        # "l1_ratio": 0,        # 0 = L2 penalty (sklearn ≥1.8 style)
         "solver": "saga",      # supports elasticnet/l1_ratio
-        "penalty": "elasticnet",
         "max_iter": 1000,
         "class_weight": "balanced",
         "random_state": RANDOM_STATE,
@@ -58,14 +58,25 @@ _DEFAULTS: Dict[str, Dict[str, Any]] = {
         "probability": True,          # needed for predict_proba → ROC/PR
         "random_state": RANDOM_STATE,
     },
+    "neural_network": {
+        "layers": [30, 20, 10, 5],
+        "dropout": 0.2,
+        "learning_rate": 0.001,
+        "epochs": 35,
+        "batch_size": 250,
+        "activation": "relu",
+        "random_state": RANDOM_STATE,
+        "verbose": 0,
+    },
 }
 
-# Map canonical name → sklearn class
+# Map canonical name → sklearn / Keras class
 _REGISTRY: Dict[str, type] = {
     "random_forest": RandomForestClassifier,
     "logistic_regression": LogisticRegression,
     "knn": KNeighborsClassifier,
     "svm": SVC,
+    "neural_network": KerasNN,
 }
 
 
@@ -135,5 +146,6 @@ def get_model_display_name(name: str) -> str:
         "logistic_regression": "Logistic Regression",
         "knn": "K-Nearest Neighbors",
         "svm": "Support Vector Machine",
+        "neural_network": "Neural Network (Keras)",
     }
     return _DISPLAY.get(name, name)

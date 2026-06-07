@@ -61,7 +61,7 @@ def evaluate_model(
 
     Parameters
     ----------
-    model : fitted sklearn estimator
+    model : fitted sklearn estimator (or KerasNN wrapper)
     X_test, y_test : held-out test data
     model_name, sampling : used for labelling plots / files
 
@@ -70,14 +70,21 @@ def evaluate_model(
     dict
         Metric name → float value.
     """
-    y_pred = model.predict(X_test)
+    # Ensure X_test is numpy array for Keras models
+    from src.keras_nn import KerasNN
+    if isinstance(model, KerasNN):
+        X_test_arr = X_test.values.astype(np.float32)
+    else:
+        X_test_arr = X_test
+
+    y_pred = model.predict(X_test_arr)
 
     # Probabilities (if available)
     y_proba: Optional[np.ndarray] = None
     if hasattr(model, "predict_proba"):
-        y_proba = model.predict_proba(X_test)[:, 1]
+        y_proba = model.predict_proba(X_test_arr)[:, 1]
     elif hasattr(model, "decision_function"):
-        y_proba = model.decision_function(X_test)
+        y_proba = model.decision_function(X_test_arr)
 
     metrics: Dict[str, float] = {
         "accuracy": round(accuracy_score(y_test, y_pred), 4),

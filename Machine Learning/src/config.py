@@ -36,10 +36,12 @@ RANDOM_STATE: int = 42
 TEST_SIZE: float = 0.2
 
 # ──────────────────────────────────────────────
-# Sampling
+# Tuner sub-sampling (speed optimisation)
 # ──────────────────────────────────────────────
-# Fraction of data used for KNN/SVM tuning (speed optimisation)
-SAMPLE_FRACTION: float = 0.15
+# Models with O(n²) or higher complexity get sub-sampled during tuning.
+# The final train step always uses 100% of SMOTE data.
+SAMPLE_FRACTION_KNN_SVM: float = 0.10   # KNN / SVM use 10%  (~45k rows)
+SAMPLE_FRACTION_NN: float = 0.30        # Neural Network uses 30% (~68k rows)
 
 # ──────────────────────────────────────────────
 # Feature engineering
@@ -56,12 +58,13 @@ MODEL_NAMES: list[str] = [
     "logistic_regression",
     "knn",
     "svm",
+    "neural_network",
 ]
 
 # ──────────────────────────────────────────────
 # Tuner defaults
 # ──────────────────────────────────────────────
-TUNER_N_TRIALS: int = 50
+TUNER_N_TRIALS: int = 30
 TUNER_CV_FOLDS: int = 5
 
 # ──────────────────────────────────────────────

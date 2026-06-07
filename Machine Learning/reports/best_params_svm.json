@@ -1,10 +1,9 @@
 {
   "model": "svm",
-  "best_f1": 0.9987705795265679,
+  "best_f1": 0.9982224593175462,
   "params": {
-    "kernel": "rbf",
-    "C": 28.477948820003977,
-    "class_weight": "balanced",
-    "gamma": "auto"
+    "C": 42.741460350167124,
+    "gamma": "auto",
+    "class_weight": null
   }
 }

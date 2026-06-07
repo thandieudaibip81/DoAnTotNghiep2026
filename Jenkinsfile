@@ -10,6 +10,13 @@ spec:
   containers:
     - name: docker
       image: docker:27-dind
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "1000m"
+          memory: "2Gi"
       securityContext:
         privileged: true
       env:
@@ -24,8 +31,7 @@ spec:
       args: ['infinity']
   volumes:
     - name: docker-storage
-      persistentVolumeClaim:
-        claimName: jenkins-docker-pvc
+      emptyDir: {}
 '''
         }
     }
