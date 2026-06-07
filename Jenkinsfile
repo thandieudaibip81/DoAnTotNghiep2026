@@ -9,16 +9,6 @@ spec:
   serviceAccountName: jenkins-admin
   nodeSelector:
     kubernetes.io/hostname: node3
-  dnsPolicy: "None"
-  dnsConfig:
-    nameservers:
-      - 8.8.8.8
-      - 8.8.4.4
-      - 1.1.1.1
-    searches:
-      - jenkins.svc.cluster.local
-      - svc.cluster.local
-      - cluster.local
   containers:
     - name: docker
       image: docker:27-dind
