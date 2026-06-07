@@ -7,6 +7,8 @@ apiVersion: v1
 kind: Pod
 spec:
   serviceAccountName: jenkins-admin
+  nodeSelector:
+    kubernetes.io/hostname: node3
   containers:
     - name: docker
       image: docker:27-dind
@@ -15,13 +17,15 @@ spec:
           cpu: "500m"
           memory: "1Gi"
         limits:
-          cpu: "1000m"
-          memory: "2Gi"
+          cpu: "2000m"
+          memory: "3Gi"
       securityContext:
         privileged: true
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
+        - name: DOCKER_DRIVER
+          value: "overlay2"
       volumeMounts:
         - name: docker-storage
           mountPath: /var/lib/docker
@@ -31,7 +35,8 @@ spec:
       args: ['infinity']
   volumes:
     - name: docker-storage
-      emptyDir: {}
+      emptyDir:
+        sizeLimit: 10Gi
 '''
         }
     }
@@ -54,10 +59,17 @@ spec:
             steps {
                 container('docker') {
                     sh '''
-                        # Wait for Docker daemon to be ready
+                        # Wait for Docker daemon to be ready (up to 5 minutes)
+                        RETRIES=0
+                        MAX_RETRIES=60
                         while ! docker info > /dev/null 2>&1; do
-                            echo "Waiting for Docker daemon..."
-                            sleep 2
+                            RETRIES=$((RETRIES+1))
+                            if [ $RETRIES -ge $MAX_RETRIES ]; then
+                                echo "Docker daemon failed to start after ${MAX_RETRIES} retries!"
+                                exit 1
+                            fi
+                            echo "Waiting for Docker daemon... (attempt ${RETRIES}/${MAX_RETRIES})"
+                            sleep 5
                         done
                         echo "Docker daemon is ready!"
 
