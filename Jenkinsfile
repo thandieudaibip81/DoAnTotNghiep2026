@@ -9,6 +9,16 @@ spec:
   serviceAccountName: jenkins-admin
   nodeSelector:
     kubernetes.io/hostname: node3
+  dnsPolicy: "None"
+  dnsConfig:
+    nameservers:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
+    searches:
+      - jenkins.svc.cluster.local
+      - svc.cluster.local
+      - cluster.local
   containers:
     - name: docker
       image: docker:27-dind
@@ -73,13 +83,40 @@ spec:
                         done
                         echo "Docker daemon is ready!"
 
-                        # Build the image
-                        docker build \
-                            --platform linux/amd64 \
-                            -f Ops/Dockerfile \
-                            -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
-                            -t ${DOCKER_IMAGE}:latest \
-                            "Machine Learning"
+                        # Configure Docker daemon with registry mirrors for better connectivity
+                        mkdir -p /etc/docker
+                        cat > /etc/docker/daemon.json <<'DAEMONJSON'
+{
+    "registry-mirrors": ["https://mirror.gcr.io"],
+    "dns": ["8.8.8.8", "8.8.4.4", "1.1.1.1"],
+    "max-concurrent-downloads": 3
+}
+DAEMONJSON
+
+                        # Build the image with retry logic (up to 3 attempts)
+                        BUILD_SUCCESS=false
+                        for attempt in 1 2 3; do
+                            echo "=== Build attempt ${attempt}/3 ==="
+                            if docker build \
+                                --platform linux/amd64 \
+                                --network host \
+                                -f Ops/Dockerfile \
+                                -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                                -t ${DOCKER_IMAGE}:latest \
+                                "Machine Learning"; then
+                                BUILD_SUCCESS=true
+                                echo "Build succeeded on attempt ${attempt}!"
+                                break
+                            else
+                                echo "Build failed on attempt ${attempt}, waiting 15s before retry..."
+                                sleep 15
+                            fi
+                        done
+
+                        if [ "$BUILD_SUCCESS" != "true" ]; then
+                            echo "All 3 build attempts failed!"
+                            exit 1
+                        fi
                     '''
                 }
             }
@@ -95,8 +132,19 @@ spec:
                     )]) {
                         sh '''
                             echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-                            docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                            docker push ${DOCKER_IMAGE}:latest
+
+                            # Push with retry logic
+                            for attempt in 1 2 3; do
+                                echo "=== Push attempt ${attempt}/3 ==="
+                                if docker push ${DOCKER_IMAGE}:${DOCKER_TAG} && \
+                                   docker push ${DOCKER_IMAGE}:latest; then
+                                    echo "Push succeeded on attempt ${attempt}!"
+                                    break
+                                else
+                                    echo "Push failed on attempt ${attempt}, waiting 10s..."
+                                    sleep 10
+                                fi
+                            done
                         '''
                     }
                 }
